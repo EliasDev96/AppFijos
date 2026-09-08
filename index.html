@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#143a4e">
+<title>Mantenimiento</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fondo:#eef2f4; --sup:#fff; --tinta:#0f1a22; --suave:#5d6f7d;
+  --rail:#143a4e; --raily:#1d4f68; --linea:#d3dce1; --linea2:#e8eef1;
+  --ambar:#b8730b; --verde:#16704a; --rojo:#9e2b22; --azul:#1a5f86;
+  --alto:56px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overscroll-behavior-y:contain}
+body{background:var(--fondo);color:var(--tinta);
+  font:16px/1.45 'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+code,.mono{font-family:'IBM Plex Mono',monospace;font-size:.85em}
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* ------------------------------------------------------------------ marco */
+#cabecera{position:sticky;top:0;z-index:20;background:var(--rail);color:#fff;
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;display:flex;align-items:center;gap:12px}
+#cabecera .volver{background:none;border:0;color:#cfe0ea;font-size:26px;line-height:1;
+  padding:0 4px;cursor:pointer;min-width:32px;text-align:left}
+#cabecera h1{font-size:18px;font-weight:600;margin:0;flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#senal{font-size:12px;color:#9dc0d3;display:flex;align-items:center;gap:5px;white-space:nowrap}
+#senal .pto{width:8px;height:8px;border-radius:50%;background:#4caf7d}
+#senal.sin .pto{background:#b8730b}
+#senal.cola .pto{background:#e0a63d}
+
+main{padding:16px 16px calc(env(safe-area-inset-bottom) + 28px);max-width:640px;margin:0 auto}
+.pantalla{display:none}
+.pantalla.on{display:block}
+
+/* ---------------------------------------------------------------- ingreso */
+#pIngreso{padding-top:34px;text-align:left}
+#pIngreso h2{font-size:24px;margin:0 0 4px;font-weight:600}
+#pIngreso p.sub{margin:0 0 26px;color:var(--suave);font-size:14px}
+label{display:block;font-size:14px;color:var(--suave);margin:0 0 5px}
+input,select,textarea{width:100%;padding:13px 12px;border:1px solid var(--linea);
+  background:var(--sup);border-radius:0}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--azul);outline-offset:-1px}
+.campo{margin-bottom:16px}
+input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3em;font-size:22px;text-align:center}
+
+/* --------------------------------------------------------------- botones */
+.bton{display:block;width:100%;min-height:var(--alto);padding:15px 18px;border:0;
+  background:var(--rail);color:#fff;font-size:16px;font-weight:500;text-align:left;
+  cursor:pointer;margin-bottom:10px}
+.bton:active{background:var(--raily)}
+.bton.claro{background:var(--sup);color:var(--tinta);border:1px solid var(--linea)}
+.bton.claro:active{background:#e7eef2}
+.bton.centro{text-align:center}
+.bton[disabled]{opacity:.45}
+.bton .n{float:right;font-family:'IBM Plex Mono',monospace;font-weight:500}
+.bton .sub{display:block;font-size:13px;font-weight:400;opacity:.72;margin-top:2px}
+
+/* --------------------------------------------------------------- resumen */
+.saludo{font-size:22px;font-weight:600;margin:2px 0 2px}
+.fechaHoy{color:var(--suave);font-size:14px;margin:0 0 18px}
+.contadores{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--linea);
+  background:var(--sup);margin-bottom:18px}
+.cont{padding:15px 16px;border-right:1px solid var(--linea2);border-bottom:1px solid var(--linea2)}
+.cont:nth-child(2n){border-right:0}
+.cont:nth-last-child(-n+2){border-bottom:0}
+.cont b{display:block;font-size:32px;font-weight:500;font-family:'IBM Plex Mono',monospace;line-height:1.05}
+.cont span{font-size:13.5px;color:var(--suave)}
+.cont.alerta b{color:var(--rojo)}
+.cont.pend b{color:var(--ambar)}
+
+/* ------------------------------------------------------------------ lista */
+.grupo{margin:20px 0 8px;font-size:13px;color:var(--suave);font-weight:500}
+.item{display:block;width:100%;text-align:left;background:var(--sup);border:0;
+  border-bottom:1px solid var(--linea2);padding:14px 16px;cursor:pointer}
+.lista{border:1px solid var(--linea);background:var(--sup)}
+.lista .item:last-child{border-bottom:0}
+.item:active{background:#eef3f6}
+.item .eq{font-size:13px;color:var(--suave);margin-bottom:2px;display:flex;gap:7px;align-items:center}
+.item .tx{font-size:15.5px;line-height:1.35}
+.item .marcas{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}
+
+.etiq{display:inline-block;padding:2px 8px;font-size:12px;border:1px solid}
+.etiq.al{color:var(--rojo);border-color:#e3b9b5;background:#fbf0ef}
+.etiq.am{color:var(--ambar);border-color:#e8cfa4;background:#fdf6ea}
+.etiq.ok{color:var(--verde);border-color:#b6d9c8;background:#eef7f2}
+.etiq.gr{color:var(--suave);border-color:var(--linea);background:#f3f6f8}
+
+.filtros{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px}
+.filtros button{padding:8px 14px;border:1px solid var(--linea);background:var(--sup);
+  color:var(--suave);white-space:nowrap;cursor:pointer;font-size:14px}
+.filtros button.on{background:var(--rail);border-color:var(--rail);color:#fff}
+
+/* ---------------------------------------------------------------- detalle */
+.ficha{background:var(--sup);border:1px solid var(--linea);padding:16px;margin-bottom:16px}
+.ficha .eq{font-size:13px;color:var(--suave);margin-bottom:6px}
+.ficha .tx{font-size:17px;line-height:1.45}
+.ficha .marcas{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap}
+.alerta{background:#fdf6ea;border:1px solid #e8cfa4;border-left:3px solid var(--ambar);
+  padding:12px 14px;margin-bottom:16px;font-size:14.5px}
+.alerta b{display:block;margin-bottom:3px}
+.pregunta{font-size:15px;font-weight:500;margin:0 0 10px}
+.opciones{display:grid;gap:8px;margin-bottom:20px}
+.op{min-height:var(--alto);border:1px solid var(--linea);background:var(--sup);
+  padding:14px 16px;text-align:left;cursor:pointer;font-size:15.5px}
+.op:active{background:#eef3f6}
+.op.on{border-color:var(--rail);border-width:2px;background:#eef3f6;font-weight:500}
+.op.on.malo{border-color:var(--rojo);background:#fbf0ef}
+.op.on.bueno{border-color:var(--verde);background:#eef7f2}
+.notas{margin-bottom:20px}
+.puntajes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
+.pt{min-height:64px;border:1px solid var(--linea);background:var(--sup);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.pt b{font-size:22px;font-family:'IBM Plex Mono',monospace;font-weight:500}
+.pt span{font-size:10.5px;color:var(--suave)}
+.pt.on{border-color:var(--rail);border-width:2px;background:#eef3f6}
+
+.vacio{padding:40px 20px;text-align:center;color:var(--suave);font-size:15px;
+  background:var(--sup);border:1px solid var(--linea)}
+.vacio b{display:block;color:var(--tinta);font-weight:500;margin-bottom:5px}
+.nota{font-size:13.5px;color:var(--suave);margin:0 0 14px}
+
+#aviso{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 18px);
+  background:var(--rail);color:#fff;padding:14px 18px;font-size:15px;z-index:60;display:none;
+  max-width:600px;margin:0 auto}
+#aviso.mal{background:var(--rojo)}
+#instalar{display:none;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<header id="cabecera">
+  <button class="volver" id="btVolver" onclick="volver()" style="display:none" aria-label="Volver">‹</button>
+  <h1 id="titulo">Mantenimiento</h1>
+  <div id="senal"><span class="pto"></span><span id="senalTxt"></span></div>
+</header>
+
+<main>
+
+<!-- =============================================================== ingreso -->
+<section id="pIngreso" class="pantalla on">
+  <h2>Ingresá con tu código</h2>
+  <p class="sub">Solo esta vez. Después la app abre sola, con o sin señal.</p>
+  <div class="campo">
+    <label for="inCodigo">Código de técnico</label>
+    <input id="inCodigo" autocapitalize="characters" autocomplete="username" placeholder="T001">
+  </div>
+  <div class="campo">
+    <label for="inPin">PIN</label>
+    <input id="inPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
+  </div>
+  <button class="bton centro" onclick="entrar()">Entrar</button>
+</section>
+
+<!-- ================================================================ inicio -->
+<section id="pInicio" class="pantalla">
+  <button class="bton claro" id="instalar" onclick="instalar()">Instalar en el teléfono
+    <span class="sub">Para abrirla sin entrar al navegador</span></button>
+  <p class="saludo" id="saludo"></p>
+  <p class="fechaHoy" id="fechaHoy"></p>
+  <div class="contadores" id="contadores"></div>
+  <div id="botonera"></div>
+</section>
+
+<!-- ================================================================ tareas -->
+<section id="pTareas" class="pantalla">
+  <div class="filtros" id="filtros"></div>
+  <div id="listaTareas"></div>
+</section>
+
+<!-- =============================================================== detalle -->
+<section id="pDetalle" class="pantalla"></section>
+
+<!-- ============================================================ evaluación -->
+<section id="pEvaluar" class="pantalla"></section>
+
+<!-- ========================================================= extraordinario -->
+<section id="pExtra" class="pantalla">
+  <p class="nota">Para trabajos que no estaban planificados: una falla, un pedido del local,
+    una reparación de urgencia.</p>
+  <div class="campo">
+    <label for="exLocal">Local</label>
+    <select id="exLocal"></select>
+  </div>
+  <div class="campo">
+    <label for="exTitulo">Qué pasó</label>
+    <input id="exTitulo" placeholder="Falla en cámara frigorífica">
+  </div>
+  <div class="campo">
+    <label for="exDesc">Qué hiciste</label>
+    <textarea id="exDesc" rows="4" placeholder="Se cambió el contactor y se probó el arranque"></textarea>
+  </div>
+  <div class="campo">
+    <label for="exEquipo">Equipo o sector (opcional)</label>
+    <input id="exEquipo" placeholder="Cámara de congelados">
+  </div>
+  <button class="bton centro" onclick="guardarExtra()">Registrar trabajo</button>
+</section>
+
+<!-- ============================================================== ajustes -->
+<section id="pAjustes" class="pantalla">
+  <div class="ficha">
+    <div class="eq">Técnico</div>
+    <div class="tx" id="ajQuien"></div>
+  </div>
+  <div class="ficha">
+    <div class="eq">Sincronización</div>
+    <div class="tx" id="ajSync"></div>
+  </div>
+  <button class="bton claro" onclick="sincronizar(true)">Sincronizar ahora</button>
+  <button class="bton claro" onclick="salir()">Cerrar sesión</button>
+  <p class="nota" style="margin-top:14px">Al cerrar sesión se borra todo lo guardado en este teléfono.
+    Sincronizá antes para no perder nada.</p>
+</section>
+
+</main>
+<div id="aviso" role="status"></div>
+
+<script>
+/* =====================================================================
+   CONFIGURACIÓN
+   ===================================================================== */
+var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
+var VERSION_APP = '1.0.0';
+
+/* =====================================================================
+   ALMACENAMIENTO LOCAL (IndexedDB)
+   Guarda todo en el teléfono. La app funciona igual sin señal.
+   ===================================================================== */
+var BD = null;
+var ALMACENES = ['clave', 'ejecuciones', 'evaluaciones', 'observaciones', 'borradores'];
+
+function abrirBD(){
+  return new Promise(function(ok, mal){
+    var p = indexedDB.open('gmp', 1);
+    p.onupgradeneeded = function(e){
+      var db = e.target.result;
+      ALMACENES.forEach(function(n){
+        if(!db.objectStoreNames.contains(n))
+          db.createObjectStore(n, {keyPath: n==='clave' ? 'k' : 'id'});
+      });
+    };
+    p.onsuccess = function(e){ BD = e.target.result; ok(BD); };
+    p.onerror = function(){ mal(new Error('No se pudo abrir el almacenamiento del teléfono')); };
+  });
+}
+
+function guardar(almacen, obj){
+  return new Promise(function(ok, mal){
+    var t = BD.transaction(almacen, 'readwrite');
+    t.objectStore(almacen).put(obj);
+    t.oncomplete = function(){ ok(obj); };
+    t.onerror = function(){ mal(t.error); };
+  });
+}
+function leer(almacen, id){
+  return new Promise(function(ok){
+    var r = BD.transaction(almacen, 'readonly').objectStore(almacen).get(id);
+    r.onsuccess = function(){ ok(r.result || null); };
+    r.onerror = function(){ ok(null); };
+  });
+}
+function todos(almacen){
+  return new Promise(function(ok){
+    var r = BD.transaction(almacen, 'readonly').objectStore(almacen).getAll();
+    r.onsuccess = function(){ ok(r.result || []); };
+    r.onerror = function(){ ok([]); };
+  });
+}
+function borrar(almacen, id){
+  return new Promise(function(ok){
+    var t = BD.transaction(almacen, 'readwrite');
+    t.objectStore(almacen).delete(id);
+    t.oncomplete = ok;
+  });
+}
+function vaciarTodo(){
+  return Promise.all(ALMACENES.map(function(n){
+    return new Promise(function(ok){
+      var t = BD.transaction(n,'readwrite'); t.objectStore(n).clear(); t.oncomplete = ok;
+    });
+  }));
+}
+function ponerClave(k, v){ return guardar('clave', {k:k, v:v}); }
+function verClave(k){ return leer('clave', k).then(function(r){ return r ? r.v : null; }); }
+
+/* =====================================================================
+   COMUNICACIÓN CON EL SERVIDOR
+   Se manda como texto plano a propósito: así el navegador no hace una
+   consulta previa que Apps Script no sabe responder.
+   ===================================================================== */
+var ESTADO = {token:null, usuario:null, hoy:null, cola:0, ultimaSync:null};
+
+function llamar(accion, datos){
+  return fetch(API, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({accion:accion, token:ESTADO.token, datos:datos||{}}),
+    redirect:'follow'
+  }).then(function(r){ return r.json(); }).then(function(o){
+    if(!o.ok) throw new Error(o.error);
+    return o.datos;
+  });
+}
+
+function hayInternet(){ return navigator.onLine; }
+
+/* =====================================================================
+   PANTALLAS
+   ===================================================================== */
+var PILA = [];
+function ir(pantalla, titulo, apilar){
+  if(apilar !== false && PILA[PILA.length-1] !== pantalla) PILA.push(pantalla);
+  Array.prototype.forEach.call(document.querySelectorAll('.pantalla'), function(s){
+    s.className = 'pantalla' + (s.id === pantalla ? ' on' : '');
+  });
+  document.getElementById('titulo').textContent = titulo;
+  document.getElementById('btVolver').style.display = (PILA.length > 1) ? 'block' : 'none';
+  window.scrollTo(0,0);
+}
+function volver(){
+  PILA.pop();
+  var p = PILA[PILA.length-1] || 'pInicio';
+  if(p === 'pInicio') { PILA = ['pInicio']; verInicio(); }
+  else ir(p, document.getElementById('titulo').textContent, false);
+}
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+function avisar(txt, mal){
+  var a = $('aviso'); a.textContent = txt; a.className = mal ? 'mal' : '';
+  a.style.display = 'block'; clearTimeout(a._t);
+  a._t = setTimeout(function(){ a.style.display='none'; }, 3400);
+}
+
+function pintarSenal(){
+  var s = $('senal'), t = $('senalTxt');
+  if(!hayInternet()){ s.className = 'sin'; t.textContent = 'Sin señal'; }
+  else if(ESTADO.cola > 0){ s.className = 'cola'; t.textContent = ESTADO.cola + ' sin enviar'; }
+  else { s.className = ''; t.textContent = 'Al día'; }
+}
+
+/* =====================================================================
+   FECHAS
+   ===================================================================== */
+function hoyTexto(){
+  var d = new Date();
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+}
+function fechaLarga(){
+  var dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
+               'septiembre','octubre','noviembre','diciembre'];
+  var d = new Date();
+  return dias[d.getDay()]+' '+d.getDate()+' de '+meses[d.getMonth()];
+}
+function saludoHora(){
+  var h = new Date().getHours();
+  return h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches');
+}
+function uuid(){
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    var r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
+  });
+}
+
+/* =====================================================================
+   INGRESO
+   ===================================================================== */
+function entrar(){
+  var c = $('inCodigo').value.trim().toUpperCase(), p = $('inPin').value.trim();
+  if(!c || !p){ avisar('Falta el código o el PIN', true); return; }
+  if(!hayInternet()){ avisar('Para entrar la primera vez hace falta señal', true); return; }
+
+  llamar('login', {codigo:c, pin:p}).then(function(d){
+    ESTADO.token = d.token; ESTADO.usuario = d.usuario;
+    return Promise.all([ponerClave('token', d.token), ponerClave('usuario', d.usuario)]);
+  }).then(function(){
+    $('inPin').value = '';
+    return sincronizar(true);
+  }).then(verInicio)
+  .catch(function(e){ avisar(e.message, true); });
+}
+$('inPin').addEventListener('keydown', function(e){ if(e.key === 'Enter') entrar(); });
+
+function salir(){
+  if(ESTADO.cola > 0 && !confirm('Tenés '+ESTADO.cola+' registros sin enviar. Si cerrás sesión se pierden. ¿Seguimos?')) return;
+  vaciarTodo().then(function(){ location.reload(); });
+}
+
+/* =====================================================================
+   SINCRONIZACIÓN
+   Primero sube lo pendiente, después baja el trabajo.
+   ===================================================================== */
+function pendientes(){
+  return Promise.all([todos('ejecuciones'), todos('evaluaciones'), todos('observaciones')])
+    .then(function(r){
+      return {
+        ejecuciones:  r[0].filter(function(x){ return !x._sync; }),
+        evaluaciones: r[1].filter(function(x){ return !x._sync; }),
+        observaciones:r[2].filter(function(x){ return !x._sync; })
+      };
+    });
+}
+
+function contarCola(){
+  return pendientes().then(function(p){
+    ESTADO.cola = p.ejecuciones.length + p.evaluaciones.length + p.observaciones.length;
+    pintarSenal();
+    return ESTADO.cola;
+  });
+}
+
+function limpiar(x){
+  var o = {}; for(var k in x){ if(k.charAt(0) !== '_') o[k] = x[k]; }
+  return o;
+}
+
+function sincronizar(avisarFin){
+  if(!ESTADO.token) return Promise.resolve();
+  if(!hayInternet()){ if(avisarFin) avisar('Sin señal. Se envía solo cuando vuelva.', true);
+                      return contarCola(); }
+
+  return pendientes().then(function(p){
+    var total = p.ejecuciones.length + p.evaluaciones.length + p.observaciones.length;
+    if(!total) return null;
+    return llamar('subirLote', {lote:{
+      ejecuciones:  p.ejecuciones.map(limpiar),
+      evaluaciones: p.evaluaciones.map(limpiar),
+      observaciones:p.observaciones.map(limpiar)
+    }});
+  }).then(function(r){
+    if(!r) return;
+    // Solo se marca como enviado lo que el servidor confirmó.
+    var pares = [['ejecuciones', r.ejecuciones], ['evaluaciones', r.evaluaciones],
+                 ['observaciones', r.observaciones]];
+    var tareas = [];
+    pares.forEach(function(par){
+      (par[1]||[]).forEach(function(res){
+        if(res.estado === 'GUARDADA' || res.estado === 'YA_EXISTIA'){
+          tareas.push(leer(par[0], res.id).then(function(x){
+            if(x){ x._sync = 1; return guardar(par[0], x); }
+          }));
+        }
+      });
+    });
+    return Promise.all(tareas);
+  }).then(function(){
+    return llamar('trabajoDelDia', {fecha: hoyTexto()});
+  }).then(function(d){
+    ESTADO.hoy = d;
+    ESTADO.ultimaSync = new Date().toISOString();
+    return Promise.all([ponerClave('hoy', d), ponerClave('ultimaSync', ESTADO.ultimaSync)]);
+  }).then(contarCola)
+  .then(function(){
+    if(avisarFin) avisar('Sincronizado');
+  })
+  .catch(function(e){
+    contarCola();
+    if(avisarFin) avisar('No se pudo sincronizar: ' + e.message, true);
+  });
+}
+
+/* =====================================================================
+   QUÉ QUEDA PENDIENTE HOY
+   La lista viene del servidor, pero se descuenta localmente lo que el
+   técnico ya hizo sin señal.
+   ===================================================================== */
+function hechasLocalmente(){
+  return todos('ejecuciones').then(function(e){
+    var m = {};
+    e.forEach(function(x){ if(x.idTarea) m[x.idLocal + '|' + x.idTarea] = x.fechaProgramada; });
+    return m;
+  });
+}
+
+function bloques(){ return (ESTADO.hoy && ESTADO.hoy.locales) ? ESTADO.hoy.locales : []; }
+
+function recolectar(cual){
+  return hechasLocalmente().then(function(hechas){
+    var out = [];
+    bloques().forEach(function(b){
+      var lista = (cual === 'vencidas') ? b.vencidas : b.pendientes;
+      (lista||[]).forEach(function(t){
+        var k = b.idLocal + '|' + t.idTarea;
+        if(hechas[k] && hechas[k] >= t.ventanaDesde && hechas[k] <= t.ventanaHasta) return;
+        t._local = b.idLocal; t._localNombre = b.local; t._codigo = b.codigo;
+        out.push(t);
+      });
+    });
+    return out;
+  });
+}
+
+/* =====================================================================
+   INICIO
+   ===================================================================== */
+function verInicio(){
+  PILA = ['pInicio'];
+  ir('pInicio', 'Mantenimiento', false);
+
+  var u = ESTADO.usuario || {};
+  $('saludo').textContent = saludoHora() + ', ' + (u.nombre || '');
+  $('fechaHoy').textContent = fechaLarga();
+
+  Promise.all([recolectar('pendientes'), recolectar('vencidas'), todos('borradores'),
+               todos('ejecuciones')]).then(function(r){
+    var pend = r[0], venc = r[1], borr = r[2];
+    var hechasHoy = r[3].filter(function(x){ return x.fechaProgramada === hoyTexto(); }).length;
+    var evals = bloques().reduce(function(a,b){ return a + (b.evaluacionesPendientes||[]).length; }, 0);
+
+    $('contadores').innerHTML =
+      cont(pend.length, 'Pendientes', pend.length ? 'pend' : '') +
+      cont(hechasHoy, 'Hechas hoy', '') +
+      cont(venc.length, 'Vencidas', venc.length ? 'alerta' : '') +
+      cont(borr.length, 'Sin terminar', '');
+
+    var h = '';
+    h += bt('verTareas(\'pendientes\')', 'Tareas de hoy', pend.length, pend.length ? '' : 'claro');
+    if(venc.length) h += bt('verTareas(\'vencidas\')', 'Vencidas', venc.length, 'claro');
+    if(borr.length) h += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
+    if(evals) h += bt('verEvaluacion()', 'Evaluación de la semana', evals, 'claro');
+    h += bt('verExtra()', 'Registrar trabajo extraordinario', '', 'claro');
+    h += bt('verAjustes()', 'Mi cuenta', '', 'claro');
+    $('botonera').innerHTML = h;
+  });
+  pintarSenal();
+}
+
+function cont(n, t, cls){
+  return '<div class="cont '+cls+'"><b>'+n+'</b><span>'+t+'</span></div>';
+}
+function bt(fn, txt, n, cls){
+  return '<button class="bton '+(cls||'')+'" onclick="'+fn+'">'+esc(txt)+
+         (n !== '' && n !== undefined ? '<span class="n">'+n+'</span>' : '')+'</button>';
+}
+
+/* =====================================================================
+   LISTA DE TAREAS
+   ===================================================================== */
+var FILTRO = 'TODOS', MODO = 'pendientes', LISTA = [];
+
+function verTareas(modo){
+  MODO = modo || 'pendientes';
+  FILTRO = 'TODOS';
+  ir('pTareas', MODO === 'vencidas' ? 'Vencidas' : 'Tareas de hoy');
+  recolectar(MODO).then(function(l){ LISTA = l; pintarLista(); });
+}
+
+function pintarLista(){
+  var rubros = {};
+  LISTA.forEach(function(t){ rubros[t.rubro] = (rubros[t.rubro]||0) + 1; });
+
+  var f = '<button class="'+(FILTRO==='TODOS'?'on':'')+'" onclick="filtrar(\'TODOS\')">Todo ('+LISTA.length+')</button>';
+  Object.keys(rubros).sort().forEach(function(r){
+    f += '<button class="'+(FILTRO===r?'on':'')+'" onclick="filtrar(\''+r.replace(/'/g,"\\'")+'\')">'+
+         esc(r.charAt(0)+r.slice(1).toLowerCase())+' ('+rubros[r]+')</button>';
+  });
+  $('filtros').innerHTML = f;
+
+  var ver = LISTA.filter(function(t){ return FILTRO === 'TODOS' || t.rubro === FILTRO; });
+  if(!ver.length){
+    $('listaTareas').innerHTML = '<div class="vacio"><b>Nada pendiente acá</b>'+
+      (MODO==='vencidas' ? 'No tenés tareas vencidas.' : 'Terminaste todo lo de esta semana.')+'</div>';
+    return;
+  }
+
+  var h = '<div class="lista">';
+  ver.forEach(function(t, i){
+    var idx = LISTA.indexOf(t);
+    h += '<button class="item" onclick="abrirTarea('+idx+')">'+
+         '<div class="eq"><code>'+esc(t._codigo)+'</code> · '+esc(t.tipoEquipo)+
+         (t.componente ? ' · '+esc(t.componente) : '')+'</div>'+
+         '<div class="tx">'+esc(recorte(t.descripcion, 105))+'</div><div class="marcas">'+
+         (t.vencida ? '<span class="etiq al">'+t.diasVencida+' días vencida</span>' : '')+
+         (t.urgente ? '<span class="etiq am">Hoy sí o sí</span>' : '')+
+         (t.tipoActividad === 'NORMA' ? '<span class="etiq gr">Norma</span>' :
+          t.tipoActividad === 'INSPECCION' ? '<span class="etiq gr">Inspección</span>' : '')+
+         (t.prioridad === 'ALTA' ? '<span class="etiq al">Prioridad alta</span>' : '')+
+         '</div></button>';
+  });
+  $('listaTareas').innerHTML = h + '</div>';
+}
+function filtrar(r){ FILTRO = r; pintarLista(); }
+function recorte(s, n){ s = String(s); return s.length > n ? s.substring(0,n) + '…' : s; }
+
+/* =====================================================================
+   EJECUTAR UNA TAREA
+   ===================================================================== */
+var ACTUAL = null, BORRADOR = null;
+
+function abrirTarea(indice, borrador){
+  ACTUAL = borrador ? borrador.tarea : LISTA[indice];
+  BORRADOR = borrador || null;
+  ir('pDetalle', ACTUAL.tipoEquipo);
+
+  var res = borrador ? borrador.resultado : '';
+  var obs = borrador ? borrador.observacion : '';
+  var esNorma = ACTUAL.tipoActividad === 'NORMA';
+  var esInsp = ACTUAL.tipoActividad === 'INSPECCION';
+
+  var ops = esNorma
+    ? [['CUMPLE','Cumple','bueno'], ['NO_CUMPLE','No cumple','malo'],
+       ['NO_APLICA','No aplica en este local','']]
+    : (esInsp
+      ? [['OK','Sin novedad','bueno'], ['OK_CON_OBSERVACION','Con observación',''],
+         ['DEFECTO','Encontré un problema','malo'], ['NO_ACCESIBLE','No pude acceder','']]
+      : [['OK','Hecha, sin novedad','bueno'], ['OK_CON_OBSERVACION','Hecha, con observación',''],
+         ['DEFECTO','Hecha, encontré un problema','malo'], ['NO_ACCESIBLE','No pude hacerla','']]);
+
+  var h = '<div class="ficha">'+
+    '<div class="eq">'+esc(ACTUAL._localNombre)+' · '+esc(ACTUAL.sector)+'</div>'+
+    '<div class="tx">'+esc(ACTUAL.descripcion)+'</div><div class="marcas">'+
+    '<span class="etiq gr">'+esc(ACTUAL.frecuencia)+'</span>'+
+    (ACTUAL.vencida ? '<span class="etiq al">Vencida</span>' : '')+
+    (ACTUAL.prioridad === 'ALTA' ? '<span class="etiq al">Prioridad alta</span>' : '')+
+    '</div></div>';
+
+  if(ACTUAL.generaAviso){
+    h += '<div class="alerta"><b>Si encontrás algo raro, avisá</b>'+
+         'Esta tarea es de las que hay que informar a Mantenimiento Central cuando aparece una anomalía.</div>';
+  }
+
+  h += '<p class="pregunta">¿Cómo salió?</p><div class="opciones">';
+  ops.forEach(function(o){
+    h += '<button class="op '+(res===o[0]?'on '+o[2]:'')+'" data-r="'+o[0]+'" '+
+         'onclick="elegir(this)">'+o[1]+'</button>';
+  });
+  h += '</div>';
+
+  h += '<div class="notas"><label for="obsTxt">Observaciones (opcional)</label>'+
+       '<textarea id="obsTxt" rows="3" placeholder="Se detecta pérdida de agua en la conexión inferior"'+
+       ' oninput="guardarBorrador()">'+esc(obs)+'</textarea></div>';
+
+  h += '<button class="bton centro" onclick="registrar()">Guardar</button>';
+  if(BORRADOR) h += '<button class="bton claro centro" onclick="tirarBorrador()">Descartar lo empezado</button>';
+
+  $('pDetalle').innerHTML = h;
+}
+
+function elegir(b){
+  Array.prototype.forEach.call(b.parentNode.children, function(x){
+    x.className = 'op';
+  });
+  var r = b.getAttribute('data-r');
+  var cls = (r === 'OK' || r === 'CUMPLE') ? ' bueno'
+          : (r === 'DEFECTO' || r === 'NO_CUMPLE') ? ' malo' : '';
+  b.className = 'op on' + cls;
+  guardarBorrador();
+}
+
+function resultadoElegido(){
+  var s = $('pDetalle').querySelector('.op.on');
+  return s ? s.getAttribute('data-r') : '';
+}
+
+/* Los borradores viven solo en el teléfono. Nunca se sincronizan:
+   así no puede quedar un borrador huérfano en el servidor. */
+function guardarBorrador(){
+  if(!ACTUAL) return;
+  var id = BORRADOR ? BORRADOR.id : (ACTUAL._local + '|' + ACTUAL.idTarea);
+  BORRADOR = {
+    id: id, tarea: ACTUAL,
+    resultado: resultadoElegido(),
+    observacion: ($('obsTxt') ? $('obsTxt').value : ''),
+    actualizado: new Date().toISOString()
+  };
+  if(!BORRADOR.resultado && !BORRADOR.observacion) return;
+  guardar('borradores', BORRADOR);
+}
+
+function tirarBorrador(){
+  if(!BORRADOR) return;
+  if(!confirm('Se borra lo que empezaste en esta tarea. La tarea vuelve a quedar pendiente. ¿Seguimos?')) return;
+  borrar('borradores', BORRADOR.id).then(function(){
+    BORRADOR = null; avisar('Borrador descartado'); verInicio();
+  });
+}
+
+function registrar(){
+  var r = resultadoElegido();
+  if(!r){ avisar('Elegí cómo salió la tarea', true); return; }
+  var obs = $('obsTxt').value.trim();
+  if((r === 'DEFECTO' || r === 'NO_CUMPLE') && !obs){
+    avisar('Contá qué encontraste: sin eso nadie puede resolverlo', true); return;
+  }
+
+  var id = uuid();
+  var eje = {
+    id: id, tipo:'PREVENTIVA', idTarea: ACTUAL.idTarea, idLocal: ACTUAL._local,
+    idTipoEquipo: ACTUAL.tipoEquipo, sector: ACTUAL.sector,
+    fechaProgramada: ACTUAL.fechaProgramada, fin: new Date().toISOString(),
+    estado:'COMPLETADA', resultado: r, observacion: obs,
+    requiereCorrectivo: (r === 'DEFECTO' || r === 'NO_CUMPLE'),
+    versionApp: VERSION_APP, _sync: 0
+  };
+
+  var acciones = [guardar('ejecuciones', eje)];
+
+  if(obs){
+    acciones.push(guardar('observaciones', {
+      id: uuid(), idEjecucion: id, idLocal: ACTUAL._local, idTipoEquipo: ACTUAL.tipoEquipo,
+      fecha: ACTUAL.fechaProgramada, texto: obs,
+      gravedad: (r === 'DEFECTO' || r === 'NO_CUMPLE') ? 'ALTA' : 'MEDIA', _sync: 0
+    }));
+  }
+  if(BORRADOR) acciones.push(borrar('borradores', BORRADOR.id));
+
+  Promise.all(acciones).then(function(){
+    BORRADOR = null;
+    avisar(hayInternet() ? 'Tarea registrada' : 'Guardada. Se envía cuando haya señal.');
+    return sincronizar(false);
+  }).then(verInicio);
+}
+
+/* =====================================================================
+   BORRADORES
+   ===================================================================== */
+function verBorradores(){
+  ir('pTareas', 'Sin terminar');
+  $('filtros').innerHTML = '';
+  todos('borradores').then(function(b){
+    if(!b.length){
+      $('listaTareas').innerHTML = '<div class="vacio"><b>No hay nada a medio hacer</b>'+
+        'Cuando empieces una tarea y no la termines, aparece acá.</div>';
+      return;
+    }
+    var h = '<p class="nota">Estas tareas quedaron empezadas. Podés seguir donde las dejaste.</p><div class="lista">';
+    b.forEach(function(x, i){
+      h += '<button class="item" onclick="seguirBorrador('+i+')">'+
+           '<div class="eq">'+esc(x.tarea._codigo || '')+' · '+esc(x.tarea.tipoEquipo)+'</div>'+
+           '<div class="tx">'+esc(recorte(x.tarea.descripcion, 90))+'</div>'+
+           '<div class="marcas"><span class="etiq am">Sin terminar</span></div></button>';
+    });
+    $('listaTareas').innerHTML = h + '</div>';
+    window._borr = b;
+  });
+}
+function seguirBorrador(i){ abrirTarea(null, window._borr[i]); }
+
+/* =====================================================================
+   EVALUACIÓN SEMANAL
+   ===================================================================== */
+var EVAL_PUNTAJES = {};
+
+function verEvaluacion(){
+  ir('pEvaluar', 'Evaluación de la semana');
+  EVAL_PUNTAJES = {};
+  var etiquetas = ['Muy deficiente','Deficiente','Regular','Bueno','Excelente'];
+
+  var h = '<p class="nota">Una sola nota por grupo de equipos, pensando en cómo está el conjunto '+
+          'esta semana. No es por cada máquina.</p>';
+  var hay = false;
+
+  bloques().forEach(function(b){
+    (b.evaluacionesPendientes||[]).forEach(function(g){
+      hay = true;
+      var k = b.idLocal + '::' + g;
+      h += '<div class="ficha"><div class="eq">'+esc(b.local)+'</div>'+
+           '<div class="tx" style="font-weight:500;margin-bottom:12px">'+esc(g)+'</div>'+
+           '<div class="puntajes">';
+      for(var p=1; p<=5; p++){
+        h += '<button class="pt" data-k="'+esc(k)+'" data-p="'+p+'" onclick="puntuar(this)">'+
+             '<b>'+p+'</b><span>'+etiquetas[p-1]+'</span></button>';
+      }
+      h += '</div><textarea id="ev_'+esc(k)+'" rows="2" placeholder="Comentario (opcional)"></textarea></div>';
+    });
+  });
+
+  if(!hay){
+    $('pEvaluar').innerHTML = '<div class="vacio"><b>Ya está evaluada la semana</b>'+
+      'Vuelve a pedirse la semana que viene.</div>';
+    return;
+  }
+  h += '<button class="bton centro" onclick="guardarEvaluacion()">Guardar evaluación</button>';
+  $('pEvaluar').innerHTML = h;
+}
+
+function puntuar(b){
+  var k = b.getAttribute('data-k');
+  Array.prototype.forEach.call(b.parentNode.children, function(x){ x.className = 'pt'; });
+  b.className = 'pt on';
+  EVAL_PUNTAJES[k] = Number(b.getAttribute('data-p'));
+}
+
+function guardarEvaluacion(){
+  var claves = Object.keys(EVAL_PUNTAJES);
+  if(!claves.length){ avisar('Poné al menos una nota', true); return; }
+
+  var acciones = claves.map(function(k){
+    var p = k.split('::');
+    var c = $('ev_' + k);
+    return guardar('evaluaciones', {
+      id: uuid(), idLocal: p[0], grupo: p[1], fecha: hoyTexto(),
+      puntaje: EVAL_PUNTAJES[k], observacion: c ? c.value.trim() : '', _sync: 0
+    });
+  });
+
+  Promise.all(acciones).then(function(){
+    avisar(claves.length + ' evaluaciones guardadas');
+    return sincronizar(false);
+  }).then(verInicio);
+}
+
+/* =====================================================================
+   TRABAJO EXTRAORDINARIO
+   ===================================================================== */
+function verExtra(){
+  ir('pExtra', 'Trabajo extraordinario');
+  var op = '';
+  bloques().forEach(function(b){
+    op += '<option value="'+esc(b.idLocal)+'">'+esc(b.codigo)+' — '+esc(b.local)+'</option>';
+  });
+  $('exLocal').innerHTML = op;
+}
+
+function guardarExtra(){
+  var t = $('exTitulo').value.trim();
+  if(!t){ avisar('Contá qué pasó', true); return; }
+  guardar('ejecuciones', {
+    id: uuid(), tipo:'EXTRAORDINARIA', idLocal: $('exLocal').value,
+    sector: $('exEquipo').value.trim(), fechaProgramada: hoyTexto(),
+    fin: new Date().toISOString(), estado:'COMPLETADA', resultado:'OK',
+    titulo: t, descripcionTrabajo: $('exDesc').value.trim(),
+    versionApp: VERSION_APP, _sync: 0
+  }).then(function(){
+    $('exTitulo').value = ''; $('exDesc').value = ''; $('exEquipo').value = '';
+    avisar(hayInternet() ? 'Trabajo registrado' : 'Guardado. Se envía cuando haya señal.');
+    return sincronizar(false);
+  }).then(verInicio);
+}
+
+/* =====================================================================
+   AJUSTES
+   ===================================================================== */
+function verAjustes(){
+  ir('pAjustes', 'Mi cuenta');
+  var u = ESTADO.usuario || {};
+  $('ajQuien').textContent = (u.nombre||'') + ' ' + (u.apellido||'');
+  var s = ESTADO.ultimaSync
+    ? 'Última sincronización: ' + new Date(ESTADO.ultimaSync).toLocaleString('es')
+    : 'Todavía no sincronizaste';
+  if(ESTADO.cola > 0) s += ' · ' + ESTADO.cola + ' registros esperando señal';
+  $('ajSync').textContent = s;
+}
+
+/* =====================================================================
+   INSTALACIÓN Y ARRANQUE
+   ===================================================================== */
+var promptInstalar = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault(); promptInstalar = e;
+  if(ESTADO.token) $('instalar').style.display = 'block';
+});
+function instalar(){
+  if(!promptInstalar){
+    avisar('En el menú del navegador buscá "Instalar aplicación"');
+    return;
+  }
+  promptInstalar.prompt();
+  promptInstalar.userChoice.then(function(){
+    promptInstalar = null; $('instalar').style.display = 'none';
+  });
+}
+
+window.addEventListener('online',  function(){ pintarSenal(); sincronizar(false).then(verInicio); });
+window.addEventListener('offline', pintarSenal);
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+
+abrirBD().then(function(){
+  return Promise.all([verClave('token'), verClave('usuario'), verClave('hoy'), verClave('ultimaSync')]);
+}).then(function(r){
+  ESTADO.token = r[0]; ESTADO.usuario = r[1]; ESTADO.hoy = r[2]; ESTADO.ultimaSync = r[3];
+  return contarCola();
+}).then(function(){
+  if(!ESTADO.token){ ir('pIngreso', 'Mantenimiento', false); PILA = ['pIngreso']; return; }
+  verInicio();
+  // Si hay señal, se pone al día en segundo plano sin trabar la pantalla.
+  if(hayInternet()) sincronizar(false).then(verInicio);
+}).catch(function(e){
+  avisar(e.message, true);
+});
+</script>
+</body>
+</html>
