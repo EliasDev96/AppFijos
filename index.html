@@ -381,6 +381,9 @@ function entrar(){
   if(!hayInternet()){ avisar('Para entrar la primera vez hace falta señal', true); return; }
 
   llamar('login', {codigo:c, pin:p}).then(function(d){
+    if(d.usuario.rol !== 'TECNICO'){
+      throw new Error('Esta app es para técnicos. Los supervisores entran por el panel.');
+    }
     ESTADO.token = d.token; ESTADO.usuario = d.usuario;
     return Promise.all([ponerClave('token', d.token), ponerClave('usuario', d.usuario)]);
   }).then(function(){
