@@ -8,7 +8,7 @@
  * Eso borra el caché viejo y obliga a bajar el programa actualizado.
  */
 
-const VERSION = 'gmp-v2';
+const VERSION = 'gmp-v3';
 const ARCHIVOS = [
   './',
   './index.html',

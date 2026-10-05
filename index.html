@@ -228,7 +228,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.0.0';
+var VERSION_APP = '1.1.0';
 
 /* =====================================================================
    ALMACENAMIENTO LOCAL (IndexedDB)
@@ -371,6 +371,10 @@ function uuid(){
     var r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
   });
 }
+function dia(d){
+  return {LUN:'lunes', MAR:'martes', MIE:'miércoles', JUE:'jueves',
+          VIE:'viernes', SAB:'sábado', DOM:'domingo'}[String(d||'').toUpperCase()] || '';
+}
 
 /* =====================================================================
    INGRESO
@@ -473,9 +477,12 @@ function sincronizar(avisarFin){
 }
 
 /* =====================================================================
-   QUÉ QUEDA PENDIENTE HOY
+   QUÉ QUEDA PENDIENTE
    La lista viene del servidor, pero se descuenta localmente lo que el
    técnico ya hizo sin señal.
+     'pendientes' → lo que le toca hoy (más lo atrasado de esta semana)
+     'semana'     → toda la ventana, para adelantar trabajo
+     'vencidas'   → ventanas anteriores ya cerradas
    ===================================================================== */
 function hechasLocalmente(){
   return todos('ejecuciones').then(function(e){
@@ -491,7 +498,9 @@ function recolectar(cual){
   return hechasLocalmente().then(function(hechas){
     var out = [];
     bloques().forEach(function(b){
-      var lista = (cual === 'vencidas') ? b.vencidas : b.pendientes;
+      var lista = (cual === 'vencidas') ? b.vencidas
+                : (cual === 'semana')   ? (b.pendientes||[]).concat(b.masAdelante||[])
+                : b.pendientes;
       (lista||[]).forEach(function(t){
         var k = b.idLocal + '|' + t.idTarea;
         if(hechas[k] && hechas[k] >= t.ventanaDesde && hechas[k] <= t.ventanaHasta) return;
@@ -515,19 +524,21 @@ function verInicio(){
   $('fechaHoy').textContent = fechaLarga();
 
   Promise.all([recolectar('pendientes'), recolectar('vencidas'), todos('borradores'),
-               todos('ejecuciones')]).then(function(r){
-    var pend = r[0], venc = r[1], borr = r[2];
+               todos('ejecuciones'), recolectar('semana')]).then(function(r){
+    var pend = r[0], venc = r[1], borr = r[2], semana = r[4];
     var hechasHoy = r[3].filter(function(x){ return x.fechaProgramada === hoyTexto(); }).length;
     var evals = bloques().reduce(function(a,b){ return a + (b.evaluacionesPendientes||[]).length; }, 0);
 
     $('contadores').innerHTML =
-      cont(pend.length, 'Pendientes', pend.length ? 'pend' : '') +
+      cont(pend.length, 'Para hoy', pend.length ? 'pend' : '') +
       cont(hechasHoy, 'Hechas hoy', '') +
       cont(venc.length, 'Vencidas', venc.length ? 'alerta' : '') +
       cont(borr.length, 'Sin terminar', '');
 
     var h = '';
     h += bt('verTareas(\'pendientes\')', 'Tareas de hoy', pend.length, pend.length ? '' : 'claro');
+    if(semana.length > pend.length)
+      h += bt('verTareas(\'semana\')', 'Toda la semana', semana.length, 'claro');
     if(venc.length) h += bt('verTareas(\'vencidas\')', 'Vencidas', venc.length, 'claro');
     if(borr.length) h += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
     if(evals) h += bt('verEvaluacion()', 'Evaluación de la semana', evals, 'claro');
@@ -554,7 +565,8 @@ var FILTRO = 'TODOS', MODO = 'pendientes', LISTA = [];
 function verTareas(modo){
   MODO = modo || 'pendientes';
   FILTRO = 'TODOS';
-  ir('pTareas', MODO === 'vencidas' ? 'Vencidas' : 'Tareas de hoy');
+  ir('pTareas', MODO === 'vencidas' ? 'Vencidas'
+              : MODO === 'semana' ? 'Toda la semana' : 'Tareas de hoy');
   recolectar(MODO).then(function(l){ LISTA = l; pintarLista(); });
 }
 
@@ -572,12 +584,14 @@ function pintarLista(){
   var ver = LISTA.filter(function(t){ return FILTRO === 'TODOS' || t.rubro === FILTRO; });
   if(!ver.length){
     $('listaTareas').innerHTML = '<div class="vacio"><b>Nada pendiente acá</b>'+
-      (MODO==='vencidas' ? 'No tenés tareas vencidas.' : 'Terminaste todo lo de esta semana.')+'</div>';
+      (MODO==='vencidas' ? 'No tenés tareas vencidas.'
+       : MODO==='semana' ? 'Terminaste todo lo de esta semana.'
+       : 'Terminaste lo de hoy. Si querés adelantar, mirá "Toda la semana".')+'</div>';
     return;
   }
 
   var h = '<div class="lista">';
-  ver.forEach(function(t, i){
+  ver.forEach(function(t){
     var idx = LISTA.indexOf(t);
     h += '<button class="item" onclick="abrirTarea('+idx+')">'+
          '<div class="eq"><code>'+esc(t._codigo)+'</code> · '+esc(t.tipoEquipo)+
@@ -585,6 +599,10 @@ function pintarLista(){
          '<div class="tx">'+esc(recorte(t.descripcion, 105))+'</div><div class="marcas">'+
          (t.vencida ? '<span class="etiq al">'+t.diasVencida+' días vencida</span>' : '')+
          (t.urgente ? '<span class="etiq am">Hoy sí o sí</span>' : '')+
+         (t.atrasadaSemana && !t.vencida && !t.urgente
+            ? '<span class="etiq am">Era para el '+dia(t.diaAsignado)+'</span>' : '')+
+         (MODO === 'semana' && !t.disponibleHoy
+            ? '<span class="etiq gr">'+dia(t.diaAsignado)+'</span>' : '')+
          (t.tipoActividad === 'NORMA' ? '<span class="etiq gr">Norma</span>' :
           t.tipoActividad === 'INSPECCION' ? '<span class="etiq gr">Inspección</span>' : '')+
          (t.prioridad === 'ALTA' ? '<span class="etiq al">Prioridad alta</span>' : '')+
@@ -623,6 +641,7 @@ function abrirTarea(indice, borrador){
     '<div class="eq">'+esc(ACTUAL._localNombre)+' · '+esc(ACTUAL.sector)+'</div>'+
     '<div class="tx">'+esc(ACTUAL.descripcion)+'</div><div class="marcas">'+
     '<span class="etiq gr">'+esc(ACTUAL.frecuencia)+'</span>'+
+    (ACTUAL.diaAsignado ? '<span class="etiq gr">'+dia(ACTUAL.diaAsignado)+'</span>' : '')+
     (ACTUAL.vencida ? '<span class="etiq al">Vencida</span>' : '')+
     (ACTUAL.prioridad === 'ALTA' ? '<span class="etiq al">Prioridad alta</span>' : '')+
     '</div></div>';
