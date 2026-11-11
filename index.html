@@ -192,6 +192,17 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <select id="exLocal"></select>
   </div>
   <div class="campo">
+    <label for="exRubro">Rubro</label>
+    <select id="exRubro">
+      <option value="">Elegí el rubro…</option>
+      <option value="AIRE ACONDICIONADO">Aires Acondicionados</option>
+      <option value="FRIO ALIMENTARIO">Frío Alimentario</option>
+      <option value="ELECTRICIDAD">Electricidad</option>
+      <option value="MECANICA PRODUCCION">Mecánica / Producción</option>
+      <option value="OBRAS CIVILES">Obras Civiles</option>
+    </select>
+  </div>
+  <div class="campo">
     <label for="exTitulo">Qué pasó</label>
     <input id="exTitulo" placeholder="Falla en cámara frigorífica">
   </div>
@@ -203,7 +214,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <label for="exEquipo">Equipo o sector (opcional)</label>
     <input id="exEquipo" placeholder="Cámara de congelados">
   </div>
-  <button class="bton centro" onclick="guardarExtra()">Registrar trabajo</button>
+  <button class="bton centro" onclick="guardarExtra(this)">Registrar trabajo</button>
 </section>
 
 <!-- ============================================================== ajustes -->
@@ -242,7 +253,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.2.1';
+var VERSION_APP = '1.3.0';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -426,6 +437,57 @@ $('inPin').addEventListener('keydown', function(e){ if(e.key === 'Enter') entrar
 function salir(){
   if(ESTADO.cola > 0 && !confirm('Tenés '+ESTADO.cola+' registros sin enviar. Si cerrás sesión se pierden. ¿Seguimos?')) return;
   vaciarTodo().then(function(){ location.reload(); });
+}
+
+/* =====================================================================
+   GUARDADO SIN REPETIDOS
+   Antes, si el teléfono tardaba, el técnico volvía a tocar "Guardar" y cada
+   toque creaba un registro nuevo (se encontraron 730 repetidos, uno hasta
+   28 veces en un minuto). Ahora:
+     1. el botón se bloquea al primer toque;
+     2. si la misma tarea ya se guardó hace menos de 10 minutos con el mismo
+        resultado, no se guarda otra vez;
+     3. se vuelve al inicio enseguida y se sincroniza de fondo, así el técnico
+        ve que se guardó sin esperar a la señal.
+   El servidor tiene su propio filtro, por si llega algo repetido igual.
+   ===================================================================== */
+var GUARDANDO = false;
+var MIN_REPETIDO = 10;   // minutos
+
+function empezarGuardado(btn){
+  if(GUARDANDO) return false;
+  GUARDANDO = true;
+  if(btn){ btn.disabled = true; btn.setAttribute('data-txt', btn.textContent); btn.textContent = 'Guardando…'; }
+  return true;
+}
+function terminarGuardado(btn){
+  GUARDANDO = false;
+  if(btn && btn.isConnected){
+    btn.disabled = false;
+    if(btn.getAttribute('data-txt')) btn.textContent = btn.getAttribute('data-txt');
+  }
+}
+function textoNormal(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+}
+/* ¿Hay un registro igual guardado hace menos de MIN_REPETIDO minutos? */
+function yaGuardadoRecien(almacen, igual){
+  var limite = Date.now() - MIN_REPETIDO*60000;
+  return todos(almacen).then(function(l){
+    return l.some(function(x){
+      var t = new Date(x.fin || x._guardado || 0).getTime();
+      return t >= limite && igual(x);
+    });
+  });
+}
+/* Después de guardar: al inicio ya, y la sincronización de fondo refresca
+   el inicio solo si el técnico sigue ahí (no lo saca de otra pantalla). */
+function despuesDeGuardar(mensaje){
+  avisar(mensaje);
+  verInicio();
+  sincronizar(false).then(function(){
+    if(PILA[PILA.length-1] === 'pInicio' && $('pInicio').className.indexOf('on') !== -1) verInicio();
+  });
 }
 
 /* =====================================================================
@@ -630,10 +692,10 @@ function verInicio(){
   $('fechaHoy').textContent = fechaLarga();
 
   Promise.all([recolectar('pendientes'), recolectar('vencidas'), todos('borradores'),
-               todos('ejecuciones'), recolectar('semana')]).then(function(r){
+               todos('ejecuciones'), recolectar('semana'), evaluacionesPendientes()]).then(function(r){
     var pend = r[0], venc = r[1], borr = r[2], semana = r[4];
     var hechasHoy = r[3].filter(function(x){ return x.fechaProgramada === hoyTexto(); }).length;
-    var evals = bloques().reduce(function(a,b){ return a + (b.evaluacionesPendientes||[]).length; }, 0);
+    var evals = r[5].length;
 
     $('contadores').innerHTML =
       cont(pend.length, 'Para hoy', pend.length ? 'pend' : '') +
@@ -769,7 +831,7 @@ function abrirTarea(indice, borrador){
        '<textarea id="obsTxt" rows="3" placeholder="Se detecta pérdida de agua en la conexión inferior"'+
        ' oninput="guardarBorrador()">'+esc(obs)+'</textarea></div>';
 
-  h += '<button class="bton centro" onclick="registrar()">Guardar</button>';
+  h += '<button class="bton centro" onclick="registrar(this)">Guardar</button>';
   if(BORRADOR) h += '<button class="bton claro centro" onclick="tirarBorrador()">Descartar lo empezado</button>';
 
   $('pDetalle').innerHTML = h;
@@ -814,14 +876,30 @@ function tirarBorrador(){
   });
 }
 
-function registrar(){
+function registrar(btn){
   var r = resultadoElegido();
   if(!r){ avisar('Elegí cómo salió la tarea', true); return; }
   var obs = $('obsTxt').value.trim();
   if((r === 'DEFECTO' || r === 'NO_CUMPLE') && !obs){
     avisar('Contá qué encontraste: sin eso nadie puede resolverlo', true); return;
   }
+  if(!empezarGuardado(btn)) return;           // segundo toque: no hace nada
 
+  var tarea = ACTUAL;
+  yaGuardadoRecien('ejecuciones', function(x){
+    return x.idLocal === tarea._local && x.idTarea === tarea.idTarea && x.resultado === r;
+  }).then(function(repetida){
+    if(repetida){
+      terminarGuardado(btn);
+      avisar('Esta tarea ya quedó guardada hace un momento.');
+      verInicio();
+      return;
+    }
+    guardarTarea(tarea, r, obs, btn);
+  });
+}
+
+function guardarTarea(ACTUAL, r, obs, btn){
   var id = uuid();
   var eje = {
     id: id, tipo:'PREVENTIVA', idTarea: ACTUAL.idTarea, idLocal: ACTUAL._local,
@@ -849,9 +927,12 @@ function registrar(){
 
   Promise.all(acciones).then(function(){
     BORRADOR = null;
-    avisar(hayInternet() ? 'Tarea registrada' : 'Guardada. Se envía cuando haya señal.');
-    return sincronizar(false);
-  }).then(verInicio);
+    terminarGuardado(btn);
+    despuesDeGuardar(hayInternet() ? 'Tarea registrada' : 'Guardada. Se envía cuando haya señal.');
+  }).catch(function(e){
+    terminarGuardado(btn);
+    avisar('No se pudo guardar en el teléfono: ' + e.message, true);
+  });
 }
 
 /* =====================================================================
@@ -893,8 +974,9 @@ function verEvaluacion(){
           'esta semana. No es por cada máquina.</p>';
   var hay = false;
 
-  bloques().forEach(function(b){
-    (b.evaluacionesPendientes||[]).forEach(function(g){
+  evaluacionesPendientes().then(function(pend){
+    pend.forEach(function(par){
+      var b = par.b, g = par.g;
       hay = true;
       var k = b.idLocal + '::' + g;
       h += '<div class="ficha"><div class="eq">'+esc(b.local)+'</div>'+
@@ -906,15 +988,35 @@ function verEvaluacion(){
       }
       h += '</div><textarea id="ev_'+esc(k)+'" rows="2" placeholder="Comentario (opcional)"></textarea></div>';
     });
-  });
 
-  if(!hay){
-    $('pEvaluar').innerHTML = '<div class="vacio"><b>Ya está evaluada la semana</b>'+
-      'Vuelve a pedirse la semana que viene.</div>';
-    return;
-  }
-  h += '<button class="bton centro" onclick="guardarEvaluacion()">Guardar evaluación</button>';
-  $('pEvaluar').innerHTML = h;
+    if(!hay){
+      $('pEvaluar').innerHTML = '<div class="vacio"><b>Ya está evaluada la semana</b>'+
+        'Vuelve a pedirse la semana que viene.</div>';
+      return;
+    }
+    h += '<button class="bton centro" onclick="guardarEvaluacion(this)">Guardar evaluación</button>';
+    $('pEvaluar').innerHTML = h;
+  });
+}
+
+/* Grupos que faltan evaluar esta semana: lo que pide el servidor, menos lo
+   que el técnico ya guardó en el teléfono y todavía no se sincronizó. Sin
+   esto, la misma evaluación se podía cargar dos veces. */
+function evaluacionesPendientes(){
+  return todos('evaluaciones').then(function(hechas){
+    var out = [];
+    bloques().forEach(function(b){
+      var v = b.ventana || {};
+      (b.evaluacionesPendientes||[]).forEach(function(g){
+        var ya = hechas.some(function(x){
+          return x.idLocal === b.idLocal && x.grupo === g &&
+                 (!v.desde || (x.fecha >= v.desde && x.fecha <= v.hasta));
+        });
+        if(!ya) out.push({b:b, g:g});
+      });
+    });
+    return out;
+  });
 }
 
 function puntuar(b){
@@ -924,9 +1026,10 @@ function puntuar(b){
   EVAL_PUNTAJES[k] = Number(b.getAttribute('data-p'));
 }
 
-function guardarEvaluacion(){
+function guardarEvaluacion(btn){
   var claves = Object.keys(EVAL_PUNTAJES);
   if(!claves.length){ avisar('Poné al menos una nota', true); return; }
+  if(!empezarGuardado(btn)) return;
 
   var acciones = claves.map(function(k){
     var p = k.split('::');
@@ -938,9 +1041,12 @@ function guardarEvaluacion(){
   });
 
   Promise.all(acciones).then(function(){
-    avisar(claves.length + ' evaluaciones guardadas');
-    return sincronizar(false);
-  }).then(verInicio);
+    terminarGuardado(btn);
+    despuesDeGuardar(claves.length === 1 ? '1 evaluación guardada' : claves.length + ' evaluaciones guardadas');
+  }).catch(function(e){
+    terminarGuardado(btn);
+    avisar('No se pudo guardar en el teléfono: ' + e.message, true);
+  });
 }
 
 /* =====================================================================
@@ -955,21 +1061,38 @@ function verExtra(){
   $('exLocal').innerHTML = op;
 }
 
-function guardarExtra(){
-  var t = $('exTitulo').value.trim();
+function guardarExtra(btn){
+  var local = $('exLocal').value, rubro = $('exRubro').value, t = $('exTitulo').value.trim();
+  if(!local){ avisar('No tenés locales asignados. Sincronizá o consultá con tu supervisor.', true); return; }
+  if(!rubro){ avisar('Elegí el rubro del trabajo', true); $('exRubro').focus(); return; }
   if(!t){ avisar('Contá qué pasó', true); return; }
-  guardar('ejecuciones', {
-    id: uuid(), tipo:'EXTRAORDINARIA', idLocal: $('exLocal').value,
-    sector: $('exEquipo').value.trim(), fechaProgramada: hoyTexto(),
-    fin: new Date().toISOString(), estado:'COMPLETADA', resultado:'OK',
-    titulo: t, descripcionTrabajo: $('exDesc').value.trim(),
-    versionApp: VERSION_APP, _sync: 0,
-    _localNombre: (bloques().filter(function(b){ return b.idLocal === $('exLocal').value; })[0] || {}).local || ''
-  }).then(function(){
-    $('exTitulo').value = ''; $('exDesc').value = ''; $('exEquipo').value = '';
-    avisar(hayInternet() ? 'Trabajo registrado' : 'Guardado. Se envía cuando haya señal.');
-    return sincronizar(false);
-  }).then(verInicio);
+  if(!empezarGuardado(btn)) return;
+
+  yaGuardadoRecien('ejecuciones', function(x){
+    return x.tipo === 'EXTRAORDINARIA' && x.idLocal === local && textoNormal(x.titulo) === textoNormal(t);
+  }).then(function(repetido){
+    if(repetido){
+      terminarGuardado(btn);
+      avisar('Este trabajo ya quedó guardado hace un momento.');
+      verInicio();
+      return;
+    }
+    return guardar('ejecuciones', {
+      id: uuid(), tipo:'EXTRAORDINARIA', idLocal: local, rubro: rubro,
+      sector: $('exEquipo').value.trim(), fechaProgramada: hoyTexto(),
+      fin: new Date().toISOString(), estado:'COMPLETADA', resultado:'OK',
+      titulo: t, descripcionTrabajo: $('exDesc').value.trim(),
+      versionApp: VERSION_APP, _sync: 0,
+      _localNombre: (bloques().filter(function(b){ return b.idLocal === local; })[0] || {}).local || ''
+    }).then(function(){
+      $('exTitulo').value = ''; $('exDesc').value = ''; $('exEquipo').value = ''; $('exRubro').value = '';
+      terminarGuardado(btn);
+      despuesDeGuardar(hayInternet() ? 'Trabajo registrado' : 'Guardado. Se envía cuando haya señal.');
+    });
+  }).catch(function(e){
+    terminarGuardado(btn);
+    avisar('No se pudo guardar en el teléfono: ' + e.message, true);
+  });
 }
 
 /* =====================================================================
