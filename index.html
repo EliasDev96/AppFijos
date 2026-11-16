@@ -115,6 +115,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 .op.on.malo{border-color:var(--rojo);background:#fbf0ef}
 .op.on.bueno{border-color:var(--verde);background:#eef7f2}
 .notas{margin-bottom:20px}
+.notas.oculta{display:none}
 .puntajes{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
 .pt{min-height:64px;border:1px solid var(--linea);background:var(--sup);cursor:pointer;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
@@ -133,6 +134,22 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 #aviso.mal{background:var(--rojo)}
 #instalar{display:none;margin-bottom:14px}
 .revLista{margin:0;padding-left:18px;font-size:14px;color:var(--suave)}
+/* ausencias (1.6) */
+.tit2{font-size:17px;font-weight:600;margin:6px 0 10px}
+.ausHoy{background:var(--sup);border:1px solid var(--linea);border-left:4px solid var(--azul);padding:16px;margin-bottom:18px}
+.ausHoy b{display:block;font-size:17px;margin-bottom:4px}
+.ausHoy p{margin:0 0 12px;color:var(--suave);font-size:14.5px}
+.ausNota{background:var(--sup);border:1px solid var(--linea);padding:11px 14px;margin-bottom:14px;font-size:14px}
+.ausNota.mal{border-left:3px solid var(--rojo)}
+.ausNota.ok{border-left:3px solid var(--verde)}
+.ausNota.esp{border-left:3px solid var(--ambar)}
+.aviso2{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0}
+.bton.chico{width:auto;min-height:40px;padding:8px 14px;font-size:14px;display:inline-block;margin:0}
+.atajos2{display:flex;gap:8px;margin-bottom:14px}
+.atajos2 button{flex:1;padding:10px 6px;border:1px solid var(--linea);background:var(--sup);font-size:14px;cursor:pointer}
+.atajos2 button:active{background:#eef3f6}
+.fechas2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fechas2 input{width:100%}
 .revLista li{margin-bottom:3px}
 </style>
 </head>
@@ -167,6 +184,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <span class="sub">Para abrirla sin entrar al navegador</span></button>
   <p class="saludo" id="saludo"></p>
   <p class="fechaHoy" id="fechaHoy"></p>
+  <div id="ausInicio"></div>
   <div class="contadores" id="contadores"></div>
   <div id="botonera"></div>
 </section>
@@ -217,6 +235,26 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
   <button class="bton centro" onclick="guardarExtra(this)">Registrar trabajo</button>
 </section>
 
+<!-- ============================================================ ausencias -->
+<section id="pAusencias" class="pantalla">
+  <div id="ausLista"></div>
+  <h2 class="tit2">Avisar una ausencia</h2>
+  <p class="nota">Solo el tipo y las fechas: no hace falta contar nada médico. Tu supervisor lo tiene que aprobar;
+    hasta entonces seguís viendo tus tareas como siempre.</p>
+  <p class="pregunta">¿Qué tipo de ausencia?</p>
+  <div class="opciones" id="ausTipos"></div>
+  <p class="pregunta">¿Qué días?</p>
+  <div class="atajos2">
+    <button onclick="atajoAusencia('HOY')">Desde hoy</button>
+    <button onclick="atajoAusencia('TRES')">Los últimos 3 días</button>
+  </div>
+  <div class="fechas2">
+    <div class="campo"><label for="ausDesde">Desde</label><input type="date" id="ausDesde"></div>
+    <div class="campo"><label for="ausHasta">Hasta (inclusive)</label><input type="date" id="ausHasta"></div>
+  </div>
+  <button class="bton centro" id="ausEnviar" onclick="enviarAusencia(this)">Enviar aviso</button>
+</section>
+
 <!-- ============================================================== ajustes -->
 <section id="pAjustes" class="pantalla">
   <div class="ficha">
@@ -239,6 +277,8 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
       No hace falta que los cargues de nuevo.</p>
     <ul class="revLista" id="ajRevLista"></ul>
   </div>
+  <button class="bton claro" onclick="verAusencias()">Avisar una ausencia
+    <span class="sub">Vacaciones, reposo o permiso</span></button>
   <button class="bton claro" onclick="sincronizar(true)">Sincronizar ahora</button>
   <button class="bton claro" onclick="salir()">Cerrar sesión</button>
   <p class="nota" style="margin-top:14px">Al cerrar sesión se borra todo lo guardado en este teléfono.
@@ -253,7 +293,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.3.0';
+var VERSION_APP = '1.6.0';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -714,6 +754,7 @@ function verInicio(){
     h += bt('verAjustes()', 'Mi cuenta', '', 'claro');
     $('botonera').innerHTML = h;
   });
+  pintarAusenciaInicio();
   pintarSenal();
 }
 
@@ -827,7 +868,10 @@ function abrirTarea(indice, borrador){
   });
   h += '</div>';
 
-  h += '<div class="notas"><label for="obsTxt">Observaciones (opcional)</label>'+
+  /* La caja de texto aparece solo con los resultados que piden contar algo
+     (ver pideObservacion). Así nadie escribe "todo ok" en una tarea sin novedad. */
+  h += '<div class="notas'+(pideObservacion(res)?'':' oculta')+'" id="cajaObs">'+
+       '<label for="obsTxt" id="obsEtiq">'+etiquetaObservacion(res)+'</label>'+
        '<textarea id="obsTxt" rows="3" placeholder="Se detecta pérdida de agua en la conexión inferior"'+
        ' oninput="guardarBorrador()">'+esc(obs)+'</textarea></div>';
 
@@ -835,6 +879,14 @@ function abrirTarea(indice, borrador){
   if(BORRADOR) h += '<button class="bton claro centro" onclick="tirarBorrador()">Descartar lo empezado</button>';
 
   $('pDetalle').innerHTML = h;
+}
+
+/* Resultados que piden contar qué pasó: con ellos aparece la caja de texto,
+   y escribir es obligatorio. Con cualquier otro, la caja no se ve. */
+var CON_OBSERVACION = ['OK_CON_OBSERVACION', 'DEFECTO', 'NO_CUMPLE'];
+function pideObservacion(r){ return CON_OBSERVACION.indexOf(r) !== -1; }
+function etiquetaObservacion(r){
+  return r === 'OK_CON_OBSERVACION' ? 'Contá qué observaste' : 'Contá qué encontraste';
 }
 
 function elegir(b){
@@ -845,7 +897,20 @@ function elegir(b){
   var cls = (r === 'OK' || r === 'CUMPLE') ? ' bueno'
           : (r === 'DEFECTO' || r === 'NO_CUMPLE') ? ' malo' : '';
   b.className = 'op on' + cls;
+  mostrarCajaObservacion(r);
   guardarBorrador();
+}
+
+/* Muestra u oculta la caja según el resultado. Si se oculta, lo escrito
+   queda guardado por si el técnico vuelve a esa opción, pero no se envía. */
+function mostrarCajaObservacion(r){
+  var caja = $('cajaObs');
+  if(!caja) return;
+  var ver = pideObservacion(r);
+  var estaba = !caja.classList.contains('oculta');
+  caja.classList.toggle('oculta', !ver);
+  $('obsEtiq').textContent = etiquetaObservacion(r);
+  if(ver && !estaba) $('obsTxt').focus();
 }
 
 function resultadoElegido(){
@@ -879,9 +944,13 @@ function tirarBorrador(){
 function registrar(btn){
   var r = resultadoElegido();
   if(!r){ avisar('Elegí cómo salió la tarea', true); return; }
-  var obs = $('obsTxt').value.trim();
-  if((r === 'DEFECTO' || r === 'NO_CUMPLE') && !obs){
-    avisar('Contá qué encontraste: sin eso nadie puede resolverlo', true); return;
+  // la caja solo cuenta si está a la vista: con otro resultado no se envía nada
+  var obs = pideObservacion(r) ? $('obsTxt').value.trim() : '';
+  if(pideObservacion(r) && !obs){
+    avisar(r === 'OK_CON_OBSERVACION' ? 'Contá qué observaste antes de guardar'
+                                      : 'Contá qué encontraste: sin eso nadie puede resolverlo', true);
+    $('obsTxt').focus();
+    return;
   }
   if(!empezarGuardado(btn)) return;           // segundo toque: no hace nada
 
@@ -1096,6 +1165,177 @@ function guardarExtra(btn){
 }
 
 /* =====================================================================
+   AUSENCIAS (1.6)
+   El técnico avisa vacaciones, reposo o permisos. Un supervisor o un
+   administrador lo aprueba. Mientras está pendiente no cambia nada.
+   Aprobada, el servidor no le manda tareas esos días. Avisar, cancelar y
+   "Volví antes" necesitan señal: el servidor valida en el momento (fechas,
+   superposiciones) y no tiene sentido dejarlo en cola.
+   ===================================================================== */
+var TIPOS_AUSENCIA = [['VACACIONES','Vacaciones'],['REPOSO','Reposo'],['PERMISO','Permiso'],['OTRO','Otro motivo']];
+var DIAS_ATRAS_AUSENCIA = 7;
+
+function misAvisos(){ return (ESTADO.hoy && ESTADO.hoy.ausencias) ? ESTADO.hoy.ausencias : []; }
+
+function sumarDias(t, n){
+  var p = String(t).split('-'), d = new Date(+p[0], +p[1]-1, +p[2] + n);
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+}
+function fechaDia(t){      /* "2026-11-20" → "viernes 20/11" */
+  var p = String(t).split('-'); if(p.length !== 3) return String(t||'');
+  var d = new Date(+p[0], +p[1]-1, +p[2]);
+  return ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][d.getDay()]+' '+p[2]+'/'+p[1];
+}
+function rangoAus(a){
+  return a.desde === a.hasta ? 'el ' + fechaDia(a.desde) : 'del ' + fechaCorta(a.desde) + ' al ' + fechaDia(a.hasta);
+}
+function tipoMin(a){ return String(a.tipoTexto || '').toLowerCase(); }
+
+/* En el inicio: si hoy está ausente, un cartel con "Volví antes"; si no,
+   avisos cortos de lo pendiente, lo aprobado que viene y lo rechazado. */
+function pintarAusenciaInicio(){
+  var caja = $('ausInicio'); if(!caja) return;
+  var hoy = ESTADO.hoy && ESTADO.hoy.ausenciaHoy;
+  var h = '';
+  if(hoy){
+    h += '<div class="ausHoy"><b>Estás de '+esc(tipoMin(hoy) === 'otro motivo' ? 'ausencia' : tipoMin(hoy))+
+         ' hasta el '+esc(fechaDia(hoy.hasta))+'</b>'+
+         '<p>Mientras tanto no tenés tareas asignadas, y esas semanas no te quedan vencidas.</p>'+
+         '<button class="bton chico" onclick="volviAntesDesdeInicio(\''+esc(hoy.id)+'\')">Volví antes</button></div>';
+  }
+  misAvisos().forEach(function(a){
+    if(hoy && a.id === hoy.id) return;
+    if(a.estado === 'PENDIENTE'){
+      h += '<div class="ausNota esp">Tu aviso de '+esc(tipoMin(a))+' '+esc(rangoAus(a))+' <b>espera aprobación</b>.</div>';
+    } else if(a.estado === 'APROBADA' && !a.enCurso){
+      h += '<div class="ausNota ok"><b>Ausencia aprobada</b>: '+esc(tipoMin(a))+' '+esc(rangoAus(a))+'.</div>';
+    } else if(a.estado === 'RECHAZADA' || a.estado === 'ANULADA'){
+      h += '<div class="ausNota mal">Tu aviso de '+esc(tipoMin(a))+' '+esc(rangoAus(a))+' fue <b>'+
+           (a.estado === 'RECHAZADA' ? 'rechazado' : 'anulado')+'</b>'+
+           (a.comentario ? ': '+esc(a.comentario) : '')+'.</div>';
+    }
+  });
+  caja.innerHTML = h;
+}
+
+function verAusencias(){
+  ir('pAusencias', 'Ausencias');
+  var h = '';
+  TIPOS_AUSENCIA.forEach(function(t){
+    h += '<button class="op" data-t="'+t[0]+'" onclick="elegirTipoAusencia(this)">'+esc(t[1])+'</button>';
+  });
+  $('ausTipos').innerHTML = h;
+  var hoy = hoyTexto();
+  $('ausDesde').value = ''; $('ausHasta').value = '';
+  $('ausDesde').min = sumarDias(hoy, -DIAS_ATRAS_AUSENCIA); $('ausHasta').min = sumarDias(hoy, -DIAS_ATRAS_AUSENCIA);
+  pintarMisAvisos();
+  // con señal, se trae lo último (por si el supervisor ya respondió)
+  if(hayInternet() && ESTADO.token){
+    llamar('misAusencias', {}).then(function(r){ guardarMisAvisos(r.ausencias); }).catch(function(){});
+  }
+}
+
+function guardarMisAvisos(lista){
+  if(!ESTADO.hoy) ESTADO.hoy = {locales: []};
+  ESTADO.hoy.ausencias = lista || [];
+  ponerClave('hoy', ESTADO.hoy);
+  if($('pAusencias').className.indexOf(' on') !== -1) pintarMisAvisos();
+}
+
+var NOMBRE_ESTADO_AUS = {PENDIENTE:'Espera aprobación', APROBADA:'Aprobada', RECHAZADA:'Rechazada', ANULADA:'Anulada'};
+
+function pintarMisAvisos(){
+  var l = misAvisos();
+  if(!l.length){ $('ausLista').innerHTML = ''; return; }
+  var h = '<h2 class="tit2">Tus avisos</h2>';
+  l.forEach(function(a){
+    var est = a.enCurso ? 'En curso' : (NOMBRE_ESTADO_AUS[a.estado] || a.estado);
+    var cls = a.estado === 'PENDIENTE' ? 'am' : (a.estado === 'APROBADA' ? 'ok' : 'al');
+    h += '<div class="ficha"><div class="eq">'+esc(a.tipoTexto)+'</div>'+
+         '<div class="tx">'+esc(rangoAus(a))+'</div>'+
+         '<div class="marcas"><span class="etiq '+cls+'">'+esc(est)+'</span>'+
+         '<span class="etiq gr">'+a.dias+(a.dias === 1 ? ' día' : ' días')+'</span></div>'+
+         (a.comentario && (a.estado === 'RECHAZADA' || a.estado === 'ANULADA')
+           ? '<p class="nota" style="margin:10px 0 0">'+esc(a.comentario)+'</p>' : '');
+    if(a.puedeCancelar || a.puedeVolver){
+      h += '<div class="aviso2">'+
+           (a.puedeVolver ? '<button class="bton chico" onclick="volviAntesAus(\''+esc(a.id)+'\', this)">Volví antes</button>' : '')+
+           (a.puedeCancelar ? '<button class="bton claro chico" onclick="cancelarAus(\''+esc(a.id)+'\', this)">Cancelar aviso</button>' : '')+
+           '</div>';
+    }
+    h += '</div>';
+  });
+  $('ausLista').innerHTML = h;
+}
+
+function elegirTipoAusencia(b){
+  Array.prototype.forEach.call(b.parentNode.children, function(x){ x.className = 'op'; });
+  b.className = 'op on';
+}
+
+function atajoAusencia(cual){
+  var hoy = hoyTexto();
+  if(cual === 'HOY'){ $('ausDesde').value = hoy; if(!$('ausHasta').value || $('ausHasta').value < hoy) $('ausHasta').value = ''; $('ausHasta').focus(); }
+  else { $('ausDesde').value = sumarDias(hoy, -3); $('ausHasta').value = sumarDias(hoy, -1); }
+}
+
+function enviarAusencia(btn){
+  var s = $('ausTipos').querySelector('.op.on');
+  var d = {tipo: s ? s.getAttribute('data-t') : '', desde: $('ausDesde').value, hasta: $('ausHasta').value};
+  if(!d.tipo){ avisar('Elegí el tipo de ausencia', true); return; }
+  if(!d.desde || !d.hasta){ avisar('Completá las dos fechas', true); return; }
+  if(d.hasta < d.desde){ avisar('La fecha "Hasta" no puede ser anterior a "Desde"', true); return; }
+  if(d.desde < sumarDias(hoyTexto(), -DIAS_ATRAS_AUSENCIA)){
+    avisar('Solo se puede avisar hasta '+DIAS_ATRAS_AUSENCIA+' días hacia atrás. Pedile a tu supervisor que la cargue.', true); return;
+  }
+  if(!hayInternet()){ avisar('Para avisar una ausencia hace falta señal', true); return; }
+  if(!empezarGuardado(btn)) return;
+  llamar('pedirAusencia', d).then(function(r){
+    terminarGuardado(btn);
+    guardarMisAvisos(r.ausencias);
+    $('ausDesde').value = ''; $('ausHasta').value = '';
+    Array.prototype.forEach.call($('ausTipos').children, function(x){ x.className = 'op'; });
+    avisar('Aviso enviado. Queda esperando aprobación.');
+    window.scrollTo(0, 0);
+  }).catch(function(e){
+    terminarGuardado(btn);
+    avisar(e.message, true);
+  });
+}
+
+function cancelarAus(id, btn){
+  if(!hayInternet()){ avisar('Para cancelar hace falta señal', true); return; }
+  if(!confirm('Se cancela el aviso. ¿Seguimos?')) return;
+  if(!empezarGuardado(btn)) return;
+  llamar('cancelarAusencia', {id:id}).then(function(r){
+    terminarGuardado(btn);
+    guardarMisAvisos(r.ausencias);
+    avisar('Aviso cancelado');
+  }).catch(function(e){ terminarGuardado(btn); avisar(e.message, true); });
+}
+
+/* "Volví antes": la ausencia termina ayer y hoy ya se trabaja. Se trae el
+   trabajo del día enseguida, para que las tareas aparezcan. */
+function volviAntes(id, btn){
+  if(!hayInternet()){ avisar('Para avisar que volviste hace falta señal', true); return Promise.resolve(false); }
+  if(!confirm('Tu ausencia termina ayer y desde hoy vuelven tus tareas. ¿Seguimos?')) return Promise.resolve(false);
+  if(!empezarGuardado(btn)) return Promise.resolve(false);
+  return llamar('volviAntes', {id:id}).then(function(r){
+    guardarMisAvisos(r.ausencias);
+    return sincronizar(false);
+  }).then(function(){
+    terminarGuardado(btn);
+    avisar('¡Bienvenido de vuelta! Ya tenés tus tareas.');
+    return true;
+  }).catch(function(e){ terminarGuardado(btn); avisar(e.message, true); return false; });
+}
+function volviAntesAus(id, btn){ volviAntes(id, btn).then(function(ok){ if(ok) pintarMisAvisos(); }); }
+function volviAntesDesdeInicio(id){
+  var b = $('ausInicio').querySelector('button');
+  volviAntes(id, b).then(function(ok){ if(ok) verInicio(); });
+}
+
+/* =====================================================================
    AJUSTES
    ===================================================================== */
 function verAjustes(){
@@ -1149,7 +1389,13 @@ function instalar(){
   });
 }
 
-window.addEventListener('online',  function(){ pintarSenal(); sincronizar(false).then(verInicio); });
+/* Al volver la señal se sincroniza. Solo se repinta el inicio si el técnico
+   está ahí: antes lo sacaba de la pantalla en la que estuviera (por ejemplo,
+   a mitad de una tarea o de un aviso de ausencia). */
+window.addEventListener('online', function(){
+  pintarSenal();
+  sincronizar(false).then(function(){ if(PILA[PILA.length-1] === 'pInicio') verInicio(); else pintarSenal(); });
+});
 window.addEventListener('offline', pintarSenal);
 
 if('serviceWorker' in navigator){
