@@ -66,6 +66,18 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 /* --------------------------------------------------------------- resumen */
 .saludo{font-size:22px;font-weight:600;margin:2px 0 2px}
 .fechaHoy{color:var(--suave);font-size:14px;margin:0 0 18px}
+/* 1.8: sincronizar desde el inicio (antes estaba escondido en "Mi cuenta") */
+.sync{display:flex;align-items:center;gap:12px;background:var(--sup);border:1px solid var(--linea);
+  padding:10px 10px 10px 14px;margin-bottom:16px}
+.sync .est{flex:1;min-width:0;font-size:14px;line-height:1.3}
+.sync .est b{display:block;font-weight:600}
+.sync .est span{color:var(--suave);font-size:13px}
+.sync button{flex:0 0 auto;min-height:44px;padding:0 14px;border:1px solid var(--linea);background:var(--sup);
+  color:var(--tinta);font:inherit;font-size:14.5px;font-weight:500;cursor:pointer}
+.sync.pend{border-color:#e8cfa4;border-left:3px solid var(--ambar);background:#fdf6ea}
+.sync.pend button{background:var(--rail);border-color:var(--rail);color:#fff}
+.sync button[disabled]{opacity:.55}
+#senal{cursor:pointer}
 .contadores{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--linea);
   background:var(--sup);margin-bottom:18px}
 .cont{padding:15px 16px;border-right:1px solid var(--linea2);border-bottom:1px solid var(--linea2)}
@@ -106,6 +118,18 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 .alerta{background:#fdf6ea;border:1px solid #e8cfa4;border-left:3px solid var(--ambar);
   padding:12px 14px;margin-bottom:16px;font-size:14.5px}
 .alerta b{display:block;margin-bottom:3px}
+/* 1.8: por qué falló y qué hacer */
+.alerta .que{display:block;margin-top:6px}
+.alerta .tec{display:block;margin-top:8px;font-size:12px;color:var(--suave);word-break:break-word}
+.alerta.toque{cursor:pointer}
+.alerta.toque:after{content:'Ver qué hacer ›';display:block;margin-top:6px;font-size:13px;color:var(--azul);font-weight:500}
+.prueba{background:var(--sup);border:1px solid var(--linea);margin-bottom:16px}
+.prueba .paso{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--linea2);font-size:14.5px}
+.prueba .paso:last-of-type{border-bottom:0}
+.prueba .ic{flex:0 0 22px;height:22px;border-radius:50%;text-align:center;font-weight:600;font-size:13px;line-height:22px;color:#fff;background:var(--suave)}
+.prueba .ic.ok{background:var(--verde)} .prueba .ic.mal{background:var(--rojo)} .prueba .ic.esp{background:var(--linea)}
+.prueba .paso small{display:block;color:var(--suave);font-size:13px;margin-top:1px}
+.prueba .fin{padding:12px 14px;border-top:1px solid var(--linea);font-size:14.5px;background:#f7f9fa}
 .pregunta{font-size:15px;font-weight:500;margin:0 0 10px}
 .opciones{display:grid;gap:8px;margin-bottom:20px}
 .op{min-height:var(--alto);border:1px solid var(--linea);background:var(--sup);
@@ -158,7 +182,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 <header id="cabecera">
   <button class="volver" id="btVolver" onclick="volver()" style="display:none" aria-label="Volver">‹</button>
   <h1 id="titulo">Mantenimiento</h1>
-  <div id="senal"><span class="pto"></span><span id="senalTxt"></span></div>
+  <div id="senal" onclick="sincronizarDesdeInicio()" title="Sincronizar ahora"><span class="pto"></span><span id="senalTxt"></span></div>
 </header>
 
 <main>
@@ -184,6 +208,8 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <span class="sub">Para abrirla sin entrar al navegador</span></button>
   <p class="saludo" id="saludo"></p>
   <p class="fechaHoy" id="fechaHoy"></p>
+  <div id="syncBarra"></div>
+  <div id="syncInicio"></div>
   <div id="ausInicio"></div>
   <div class="contadores" id="contadores"></div>
   <div id="botonera"></div>
@@ -265,10 +291,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <div class="eq">Sincronización</div>
     <div class="tx" id="ajSync"></div>
   </div>
-  <div class="alerta" id="ajError" style="display:none">
-    <b>La última sincronización falló</b>
-    <span id="ajErrorTx"></span>
-  </div>
+  <div class="alerta" id="ajError" style="display:none"></div>
   <div class="ficha" id="ajRev" style="display:none">
     <div class="eq">Enviados a revisión del supervisor · últimos 14 días</div>
     <div class="tx" id="ajRevN"></div>
@@ -279,7 +302,10 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
   </div>
   <button class="bton claro" onclick="verAusencias()">Avisar una ausencia
     <span class="sub">Vacaciones, reposo o permiso</span></button>
-  <button class="bton claro" onclick="sincronizar(true)">Sincronizar ahora</button>
+  <button class="bton claro" onclick="sincronizarDesdeCuenta(this)">Sincronizar ahora</button>
+  <button class="bton claro" id="btProbar" onclick="probarConexion(this)">Probar conexión
+    <span class="sub">Revisa la señal, internet y el servidor, y dice qué falla</span></button>
+  <div class="prueba" id="ajPrueba" style="display:none"></div>
   <button class="bton claro" onclick="salir()">Cerrar sesión</button>
   <p class="nota" style="margin-top:14px">Al cerrar sesión se borra todo lo guardado en este teléfono.
     Sincronizá antes para no perder nada.</p>
@@ -293,7 +319,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.6.0';
+var VERSION_APP = '1.8.0';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -370,16 +396,145 @@ function verClave(k){ return leer('clave', k).then(function(r){ return r ? r.v :
    ===================================================================== */
 var ESTADO = {token:null, usuario:null, hoy:null, cola:0, ultimaSync:null, errorSync:null};
 
-function llamar(accion, datos){
+/* 1.8: cada pedido tiene un tiempo máximo. Antes, con señal muy débil, un
+   pedido podía quedar colgado sin respuesta y sin explicación. */
+var ESPERA_MS = 60000;          // lo máximo que se espera una respuesta
+var ESPERA_ENVIO_MS = 100000;   // un envío puede esperar su turno en el servidor
+var PARTE_MAX = 20;             // registros por envío: con señal débil, envíos chicos
+var SONDA_INTERNET = 'https://www.gstatic.com/generate_204';
+
+/* Por qué falló un pedido, en palabras simples, y qué hacer. */
+function explicacion(tipo, x){
+  x = x || {};
+  var E = {
+    SIN_SENAL:    ['El teléfono no tiene señal ni WiFi.',
+                   'No hace falta hacer nada: lo que cargues queda guardado y se envía solo cuando vuelva la señal.'],
+    SIN_INTERNET: ['El teléfono está conectado, pero no llega a internet (WiFi sin internet, datos agotados o señal muy débil).',
+                   'Probá con otra red o con los datos móviles. Lo cargado queda guardado en el teléfono.'],
+    BLOQUEO:      ['Hay internet, pero el teléfono no llega al servidor de Google donde está el sistema.',
+                   'Suele ser un bloqueador de anuncios, un "DNS privado", una VPN o el WiFi de un local que bloquea a Google. Probá con datos móviles; si así anda, avisale a tu supervisor.'],
+    CORTE:        ['Se cortó la conexión en medio del envío (el servidor sí responde).',
+                   'Pasa con señal débil. La app reintenta sola, en envíos más chicos: no hace falta cargar nada de nuevo.'],
+    TARDO:        ['El servidor no contestó en ' + (x.seg === 1 ? '1 segundo' : (x.seg || 60) + ' segundos') + '.',
+                   'Puede ser señal muy débil o el sistema muy ocupado. Se reintenta solo; si se repite, probá con otra red.'],
+    SERVIDOR:     ['El servidor de Google devolvió un error' + (x.codigo ? ' (código ' + x.codigo + ')' : '') + '.',
+                   'Suele ser pasajero. Si sigue pasando durante horas, avisale a tu supervisor.'],
+    OCUPADO:      ['El sistema estaba ocupado guardando lo de otros técnicos y no llegó tu turno.',
+                   'No se perdió nada: se reintenta solo en unos minutos.'],
+    SESION:       ['Tu sesión venció (alguien entró con tu código en otro teléfono, o te cambiaron el PIN).',
+                   'Fijate en "Mi cuenta" que no queden registros sin enviar, cerrá sesión y volvé a entrar.'],
+    RECHAZO:      [x.mensaje || 'El servidor no aceptó el pedido.',
+                   'Si no sabés por qué, avisale a tu supervisor con una captura de esta pantalla.']
+  };
+  var e = E[tipo] || E.RECHAZO;
+  return { titulo: e[0], queHacer: e[1] };
+}
+
+function errorDe(tipo, detalle, extra){
+  var x = extra || {};
+  var e = new Error(explicacion(tipo, x).titulo);
+  e.tipo = tipo; e.detalle = String(detalle || '').substring(0, 300); e.extra = x;
+  return e;
+}
+
+/* El texto de error del servidor, clasificado. */
+function errorDelServidor(msg){
+  var m = String(msg || 'Error sin detalle');
+  if(/sesi[oó]n vencida/i.test(m)) return errorDe('SESION', m);
+  if(/candado|bloqueo|lock/i.test(m)) return errorDe('OCUPADO', m);
+  return errorDe('RECHAZO', m, {mensaje: m});
+}
+
+/* Un pedido al servidor. Devuelve el objeto completo de la respuesta. */
+function pedir(cuerpo, ms){
+  var espera = ms || ESPERA_MS;
+  var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var reloj = setTimeout(function(){ if(ctl) ctl.abort(); }, espera);
   return fetch(API, {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({accion:accion, token:ESTADO.token, datos:datos||{}}),
-    redirect:'follow'
-  }).then(function(r){ return r.json(); }).then(function(o){
-    if(!o.ok) throw new Error(o.error);
+    body: JSON.stringify(cuerpo),
+    redirect:'follow',
+    signal: ctl ? ctl.signal : undefined
+  }).then(function(r){
+    if(!r.ok) throw errorDe('SERVIDOR', 'HTTP ' + r.status, {codigo: r.status});
+    return r.text();
+  }).then(function(txt){
+    clearTimeout(reloj);
+    try { return JSON.parse(txt); }
+    catch(e){ throw errorDe('SERVIDOR', 'La respuesta no es JSON: ' + String(txt).substring(0, 120)); }
+  }).catch(function(err){
+    clearTimeout(reloj);
+    if(err && err.tipo) throw err;
+    var txt = String((err && err.message) || err);
+    if(err && err.name === 'AbortError') throw errorDe('TARDO', 'Sin respuesta en ' + Math.max(1, Math.round(espera/1000)) + ' s', {seg: Math.max(1, Math.round(espera/1000))});
+    if(!hayInternet()) throw errorDe('SIN_SENAL', txt);
+    throw errorDe('RED', txt);            // "Failed to fetch": hay que averiguar por qué (diagnosticar)
+  });
+}
+
+function llamar(accion, datos, ms){
+  return pedir({accion:accion, token:ESTADO.token, datos:datos||{}}, ms).then(function(o){
+    if(!o.ok) throw errorDelServidor(o.error);
     return o.datos;
   });
+}
+
+/* ¿Llega a internet? (una página mínima de Google, sin datos). */
+function sondaInternet(){
+  var t0 = Date.now();
+  var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var reloj = setTimeout(function(){ if(ctl) ctl.abort(); }, 8000);
+  return fetch(SONDA_INTERNET + '?t=' + t0, {mode:'no-cors', cache:'no-store', signal: ctl ? ctl.signal : undefined})
+    .then(function(){ clearTimeout(reloj); return {ok:true, ms: Date.now() - t0}; },
+          function(){ clearTimeout(reloj); return {ok:false, ms: Date.now() - t0}; });
+}
+
+/* ¿Responde el servidor? (no necesita sesión) */
+function sondaServidor(){
+  var t0 = Date.now();
+  return pedir({accion:'ping'}, 15000).then(function(o){ return {ok:true, ms: Date.now() - t0, version: o.version}; },
+                                           function(e){ return {ok:false, ms: Date.now() - t0, error: e}; });
+}
+
+/* Un "Failed to fetch" no dice nada. Se averigua qué pasó probando el
+   servidor y, si no responde, si hay internet en general. */
+function diagnosticar(e){
+  if(!e || e.tipo !== 'RED') return Promise.resolve(e);
+  return sondaServidor().then(function(srv){
+    if(srv.ok) return errorDe('CORTE', e.detalle);
+    if(!hayInternet()) return errorDe('SIN_SENAL', e.detalle);
+    return sondaInternet().then(function(net){
+      return errorDe(net.ok ? 'BLOQUEO' : 'SIN_INTERNET', e.detalle);
+    });
+  });
+}
+
+function tipoDeRed(){
+  var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if(!c) return '';
+  return [c.type, c.effectiveType].filter(function(x){ return x && x !== 'unknown'; }).join('/');
+}
+
+/* Las fallas de comunicación quedan anotadas y se mandan al servidor (LOG_SYNC)
+   la próxima vez que haya conexión: así se ve desde la planilla qué le pasa a
+   cada teléfono, aunque en el momento no haya llegado nada. Las que el
+   servidor sí recibió (sesión vencida, candado) ya quedan allá solas. */
+var TIPOS_A_REPORTAR = ['CORTE', 'BLOQUEO', 'SIN_INTERNET', 'TARDO', 'SERVIDOR'];
+var MAX_FALLAS = 20;
+function anotarFalla(accion, e, ms){
+  if(!e || TIPOS_A_REPORTAR.indexOf(e.tipo) === -1) return Promise.resolve();
+  return verClave('fallas').then(function(l){
+    l = (l || []).concat([{cuando: new Date().toISOString(), accion: accion, tipo: e.tipo,
+      detalle: e.detalle || '', ms: ms || 0, cola: ESTADO.cola, red: tipoDeRed(), enLinea: hayInternet(), version: VERSION_APP}]);
+    return ponerClave('fallas', l.slice(-MAX_FALLAS));
+  });
+}
+function mandarFallas(){
+  return verClave('fallas').then(function(l){
+    if(!l || !l.length) return;
+    return llamar('reportarFallas', {fallas: l}).then(function(){ return ponerClave('fallas', []); });
+  }).catch(function(){ /* se intenta la próxima vez */ });
 }
 
 function hayInternet(){ return navigator.onLine; }
@@ -418,6 +573,7 @@ function pintarSenal(){
   if(!hayInternet()){ s.className = 'sin'; t.textContent = 'Sin señal'; }
   else if(ESTADO.cola > 0){ s.className = 'cola'; t.textContent = ESTADO.cola + ' sin enviar'; }
   else { s.className = ''; t.textContent = 'Al día'; }
+  if(enInicio()) pintarBarraSync();
 }
 
 /* =====================================================================
@@ -611,56 +767,147 @@ function enRevision(){
     });
 }
 
+/* Lo pendiente, en partes de hasta PARTE_MAX registros. Cada ejecución
+   viaja con sus observaciones (el servidor las trata juntas), lo más viejo
+   primero. Antes iba todo junto: con mucho acumulado y poca señal, el envío
+   se cortaba una y otra vez, y pasando de 100 el servidor lo rechazaba. */
+function armarPartes(p){
+  var cuando = function(x){ return String(x.fin || x._guardado || x.fecha || ''); };
+  var deEjec = {}, sueltas = [];
+  var ids = {}; p.ejecuciones.forEach(function(x){ ids[x.id] = true; });
+  p.observaciones.forEach(function(o){
+    if(o.idEjecucion && ids[o.idEjecucion]) (deEjec[o.idEjecucion] = deEjec[o.idEjecucion] || []).push(o);
+    else sueltas.push(o);
+  });
+  var grupos = p.ejecuciones.map(function(x){ return {t: cuando(x), e:[x], v:[], o: deEjec[x.id] || []}; })
+    .concat(p.evaluaciones.map(function(x){ return {t: cuando(x), e:[], v:[x], o:[]}; }))
+    .concat(sueltas.map(function(x){ return {t: cuando(x), e:[], v:[], o:[x]}; }))
+    .sort(function(a, b){ return a.t < b.t ? -1 : a.t > b.t ? 1 : 0; });
+  var partes = [], act = null, n = 0;
+  grupos.forEach(function(g){
+    var tam = g.e.length + g.v.length + g.o.length;
+    if(!act || n + tam > PARTE_MAX){ act = {ejecuciones:[], evaluaciones:[], observaciones:[]}; partes.push(act); n = 0; }
+    act.ejecuciones = act.ejecuciones.concat(g.e); act.evaluaciones = act.evaluaciones.concat(g.v);
+    act.observaciones = act.observaciones.concat(g.o); n += tam;
+  });
+  return partes;
+}
+
+function esperar(ms){ return new Promise(function(ok){ setTimeout(ok, ms); }); }
+
+/* Manda una parte. Si el servidor estaba ocupado, espera unos segundos y
+   prueba una vez más. Devuelve cuántos registros quedaron en revisión. */
+function mandarParte(parte, otraVez){
+  var t0 = Date.now();
+  return llamar('subirLote', {lote:{
+    ejecuciones:  parte.ejecuciones.map(paraEnviar),
+    evaluaciones: parte.evaluaciones.map(paraEnviar),
+    observaciones:parte.observaciones.map(paraEnviar)
+  }}, ESPERA_ENVIO_MS).then(function(r){
+    var pares = [['ejecuciones', r.ejecuciones], ['evaluaciones', r.evaluaciones], ['observaciones', r.observaciones]];
+    var tareas = [];
+    pares.forEach(function(par){ (par[1]||[]).forEach(function(res){ tareas.push(anotarResultado(par[0], res)); }); });
+    return Promise.all(tareas).then(function(n){ return n.reduce(function(a, b){ return a + b; }, 0); });
+  }, function(e){
+    if(e.tipo === 'OCUPADO' && !otraVez) return esperar(4000 + Math.random()*6000).then(function(){ return mandarParte(parte, true); });
+    e.ms = Date.now() - t0;
+    throw e;
+  });
+}
+
+/* Sube todo lo pendiente, parte por parte. Si una parte falla, se deja el
+   resto para la próxima y se sigue con la descarga: nunca devuelve error. */
+function subirPendientes(){
+  return pendientes().then(function(p){
+    var partes = armarPartes(p);
+    var res = {revisados: 0, error: null, partes: partes.length, enviadas: 0};
+    var i = 0;
+    function siguiente(){
+      if(i >= partes.length) return res;
+      return mandarParte(partes[i]).then(function(n){
+        res.revisados += n; res.enviadas++; i++;
+        return siguiente();
+      });
+    }
+    return Promise.resolve().then(siguiente).catch(function(e){
+      return diagnosticar(e).then(function(e2){
+        e2.ms = e.ms;
+        res.error = e2;
+        return anotarFalla('subirLote', e2, e.ms).then(function(){ return res; });
+      });
+    });
+  });
+}
+
+/* Primero sube lo pendiente y después baja el trabajo del día. Desde la 1.8
+   el trabajo se baja AUNQUE el envío falle: antes, si no se podía enviar, el
+   técnico se quedaba sin tareas (todo en cero) hasta que se arreglara. */
+var SINCRONIZANDO = null;
 function sincronizar(avisarFin){
   if(!ESTADO.token) return Promise.resolve();
+  if(SINCRONIZANDO){
+    // ya hay una en curso (por ejemplo, la que sale sola al guardar): se espera esa
+    return SINCRONIZANDO.then(function(){ if(avisarFin) avisarResultadoSync(0); });
+  }
   if(!hayInternet()){ if(avisarFin) avisar('Sin señal. Se envía solo cuando vuelva.', true);
                       return contarCola(); }
 
-  var revisados = 0;
-  return pendientes().then(function(p){
-    var total = p.ejecuciones.length + p.evaluaciones.length + p.observaciones.length;
-    if(!total) return null;
-    return llamar('subirLote', {lote:{
-      ejecuciones:  p.ejecuciones.map(paraEnviar),
-      evaluaciones: p.evaluaciones.map(paraEnviar),
-      observaciones:p.observaciones.map(paraEnviar)
-    }});
-  }).then(function(r){
-    if(!r) return 0;
-    /* Solo sale de la cola lo que el servidor confirmó: guardado, ya existente
-       o enviado a revisión del supervisor. Un error temporal se reintenta. */
-    var pares = [['ejecuciones', r.ejecuciones], ['evaluaciones', r.evaluaciones],
-                 ['observaciones', r.observaciones]];
-    var tareas = [];
-    pares.forEach(function(par){
-      (par[1]||[]).forEach(function(res){ tareas.push(anotarResultado(par[0], res)); });
-    });
-    return Promise.all(tareas).then(function(n){
-      return n.reduce(function(a, b){ return a + b; }, 0);
-    });
-  }).then(function(nuevos){
-    revisados = nuevos || 0;
+  var subida = null;
+  var t0 = 0;
+  SINCRONIZANDO = subirPendientes().then(function(r){
+    subida = r;
+    t0 = Date.now();
     return llamar('trabajoDelDia', {fecha: hoyTexto()});
   }).then(function(d){
     ESTADO.hoy = d;
     ESTADO.ultimaSync = new Date().toISOString();
-    ESTADO.errorSync = null;
+    ESTADO.errorSync = subida.error ? fichaDeFalla('ENVIO', subida.error, true) : null;
     return Promise.all([ponerClave('hoy', d), ponerClave('ultimaSync', ESTADO.ultimaSync),
-                        ponerClave('errorSync', null)]);
-  }).then(contarCola)
-  .then(function(){
-    if(revisados) avisarRevision(revisados);
-    else if(avisarFin) avisar('Sincronizado');
-  })
-  .catch(function(e){
-    /* Se guarda el último error para verlo en "Mi cuenta": antes, si fallaba
-       la descarga del trabajo del día, el técnico no se enteraba. */
-    ESTADO.errorSync = {cuando: new Date().toISOString(), mensaje: String(e.message || e)};
-    ponerClave('errorSync', ESTADO.errorSync);
-    contarCola();
-    if(revisados) avisarRevision(revisados);
-    else if(avisarFin) avisar('No se pudo sincronizar: ' + e.message, true);
+                        ponerClave('errorSync', ESTADO.errorSync)]).then(mandarFallas);
+  }, function(e){
+    return diagnosticar(e).then(function(e2){
+      // si el envío también había fallado, ese es el motivo que importa explicar
+      var f = fichaDeFalla('DESCARGA', e2, false);
+      if(subida && subida.error) f.envioFallo = true;
+      ESTADO.errorSync = f;
+      return Promise.all([ponerClave('errorSync', f), anotarFalla('trabajoDelDia', e2, Date.now() - t0)]);
+    });
+  }).then(contarCola).then(function(){
+    SINCRONIZANDO = null;
+    if(subida && subida.revisados) avisarRevision(subida.revisados);
+    else if(avisarFin) avisarResultadoSync(0);
+    pintarSyncInicio();
+  }, function(e){
+    SINCRONIZANDO = null;                 // no debería pasar, pero nunca queda trabada
+    if(avisarFin) avisar('No se pudo sincronizar: ' + (e && e.message), true);
   });
+  return SINCRONIZANDO;
+}
+
+/* Lo que se guarda del último problema, para "Mi cuenta" y el inicio. */
+function fichaDeFalla(etapa, e, bajoTareas){
+  var x = explicacion(e.tipo, e.extra);
+  return {cuando: new Date().toISOString(), etapa: etapa, tipo: e.tipo || 'RECHAZO', titulo: x.titulo,
+          queHacer: x.queHacer, detalle: e.detalle || '', bajoTareas: !!bajoTareas, cola: ESTADO.cola};
+}
+
+function avisarResultadoSync(){
+  var f = ESTADO.errorSync;
+  if(!f) { avisar('Sincronizado'); return; }
+  if(f.etapa === 'ENVIO') avisar('Tus tareas están al día, pero no se pudo enviar todo: ' + f.titulo, true);
+  else avisar('No se pudo sincronizar: ' + (f.titulo || f.mensaje), true);
+}
+
+/* Aviso en el inicio mientras haya un problema sin resolver. */
+function pintarSyncInicio(){
+  var cont = $('syncInicio'); if(!cont) return;
+  var f = ESTADO.errorSync;
+  if(!f || !ESTADO.token){ cont.innerHTML = ''; return; }
+  var tit = f.etapa === 'ENVIO'
+    ? 'Tus tareas están al día, pero ' + (ESTADO.cola === 1 ? '1 registro no se pudo enviar' : (ESTADO.cola || 'algunos') + ' registros no se pudieron enviar') + ' todavía'
+    : 'No se pudo sincronizar';
+  if(f.etapa === 'ENVIO' && !ESTADO.cola){ cont.innerHTML = ''; return; }   // ya salió todo
+  cont.innerHTML = '<div class="alerta toque" onclick="verAjustes()"><b>' + esc(tit) + '</b>' + esc(f.titulo || f.mensaje || '') + '</div>';
 }
 
 /* Se avisa siempre, aunque la sincronización haya sido automática: el técnico
@@ -755,8 +1002,54 @@ function verInicio(){
     $('botonera').innerHTML = h;
   });
   pintarAusenciaInicio();
+  pintarSyncInicio();
+  pintarBarraSync();
   pintarSenal();
 }
+
+/* 1.8: estado y botón "Sincronizar ahora" en el inicio. Antes el botón estaba
+   solo en "Mi cuenta" y casi nadie lo encontraba: un técnico juntó 113
+   registros sin enviar sin enterarse. */
+function haceCuanto(iso){
+  if(!iso) return '';
+  var min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if(min < 1) return 'recién';
+  if(min < 60) return 'hace ' + min + ' min';
+  var h = Math.round(min / 60);
+  if(h < 24) return 'hace ' + h + (h === 1 ? ' hora' : ' horas');
+  var d = Math.round(h / 24);
+  return 'hace ' + d + (d === 1 ? ' día' : ' días');
+}
+function pintarBarraSync(){
+  var c = $('syncBarra'); if(!c) return;
+  var n = ESTADO.cola || 0;
+  var est, sub;
+  if(SINCRONIZANDO){ est = 'Sincronizando…'; sub = n ? n + (n === 1 ? ' registro por enviar' : ' registros por enviar') : 'Bajando tus tareas'; }
+  else if(n){ est = n === 1 ? '1 registro sin enviar' : n + ' registros sin enviar';
+              sub = hayInternet() ? 'Tocá "Sincronizar ahora" para mandarlos' : 'Sin señal: se envían solos cuando vuelva'; }
+  else { est = 'Todo enviado'; sub = ESTADO.ultimaSync ? 'Última sincronización: ' + haceCuanto(ESTADO.ultimaSync) : 'Todavía no sincronizaste'; }
+  c.innerHTML = '<div class="sync' + (n ? ' pend' : '') + '"><div class="est"><b>' + esc(est) + '</b><span>' + esc(sub) + '</span></div>' +
+    '<button id="btSyncInicio" onclick="sincronizarDesdeInicio()"' + (SINCRONIZANDO ? ' disabled' : '') + '>' +
+    (SINCRONIZANDO ? 'Sincronizando…' : 'Sincronizar ahora') + '</button></div>';
+}
+function enInicio(){ return PILA[PILA.length-1] === 'pInicio' && $('pInicio').className.indexOf('on') !== -1; }
+function sincronizarDesdeInicio(){
+  if(!ESTADO.token) return;
+  var p = sincronizar(true);
+  pintarBarraSync();
+  return p.then(function(){ if(enInicio()) verInicio(); else pintarSenal(); });
+}
+
+/* Si quedó algo sin enviar, se reintenta solo cada 5 minutos mientras la app
+   está abierta, y también al volver a abrirla. */
+var REINTENTO_MIN = 5;
+function reintentarSiHaceFalta(){
+  if(!ESTADO.token || SINCRONIZANDO || !ESTADO.cola || !hayInternet()) return;
+  if(document.visibilityState && document.visibilityState !== 'visible') return;
+  sincronizar(false).then(function(){ if(enInicio()) verInicio(); else pintarSenal(); });
+}
+setInterval(reintentarSiHaceFalta, REINTENTO_MIN * 60000);
+document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') reintentarSiHaceFalta(); });
 
 function cont(n, t, cls){
   return '<div class="cont '+cls+'"><b>'+n+'</b><span>'+t+'</span></div>';
@@ -1348,9 +1641,8 @@ function verAjustes(){
   if(ESTADO.cola > 0) s += ' · ' + ESTADO.cola + ' registros esperando señal';
   $('ajSync').textContent = s;
 
-  var e = ESTADO.errorSync;
-  $('ajError').style.display = e ? 'block' : 'none';
-  if(e) $('ajErrorTx').textContent = new Date(e.cuando).toLocaleString('es') + ' · ' + e.mensaje;
+  pintarErrorCuenta();
+  $('ajPrueba').style.display = 'none';
 
   enRevision().then(function(l){
     $('ajRev').style.display = l.length ? 'block' : 'none';
@@ -1369,6 +1661,93 @@ function verAjustes(){
     $('ajRevLista').innerHTML = h;
   });
 }
+
+/* El último problema de sincronización, explicado (1.8). Los guardados por
+   la 1.6 solo tienen "mensaje": se muestran como antes. */
+function pintarErrorCuenta(){
+  var e = ESTADO.errorSync, box = $('ajError');
+  box.style.display = e ? 'block' : 'none';
+  if(!e) return;
+  var cuando = new Date(e.cuando).toLocaleString('es');
+  if(!e.tipo){
+    box.innerHTML = '<b>La última sincronización falló</b>' + esc(cuando + ' · ' + (e.mensaje || ''));
+    return;
+  }
+  var tit = e.etapa === 'ENVIO'
+    ? 'Se bajaron tus tareas, pero no se pudo enviar lo que cargaste'
+    : (e.envioFallo ? 'No se pudo enviar ni bajar las tareas' : 'No se pudieron bajar las tareas');
+  box.innerHTML = '<b>' + esc(tit) + '</b>' +
+    '<span>' + esc(e.titulo) + '</span>' +
+    '<span class="que"><b style="display:inline">Qué hacer:</b> ' + esc(e.queHacer) + '</span>' +
+    '<span class="tec">' + esc(cuando) + (e.detalle ? ' · ' + esc(e.detalle) : '') + '</span>';
+}
+
+function sincronizarDesdeCuenta(btn){
+  btn.disabled = true; btn.textContent = 'Sincronizando…';
+  sincronizar(true).then(function(){
+    btn.disabled = false; btn.textContent = 'Sincronizar ahora';
+    if($('pAjustes').className.indexOf('on') !== -1) verAjustes();
+  });
+}
+
+/* "Probar conexión": cuatro pruebas en orden, cada una con su resultado,
+   y al final qué hacer. No toca la cola ni las tareas. */
+function probarConexion(btn){
+  var box = $('ajPrueba');
+  var pasos = [
+    {id:'senal', nombre:'Señal del teléfono'},
+    {id:'net', nombre:'Internet'},
+    {id:'srv', nombre:'Servidor del sistema'},
+    {id:'ses', nombre:'Tu sesión'}
+  ];
+  var res = {};
+  function pintar(fin){
+    var h = '';
+    pasos.forEach(function(p){
+      var r = res[p.id];
+      var ic = !r ? '<span class="ic esp">…</span>' : (r.ok ? '<span class="ic ok">✓</span>' : (r.ok === false ? '<span class="ic mal">✕</span>' : '<span class="ic">–</span>'));
+      h += '<div class="paso">' + ic + '<div>' + esc(p.nombre) + (r ? '<small>' + esc(r.txt) + '</small>' : '<small>Probando…</small>') + '</div></div>';
+    });
+    if(fin) h += '<div class="fin">' + fin + '</div>';
+    box.innerHTML = h; box.style.display = 'block';
+  }
+  btn.disabled = true;
+  pintar('');
+  try { box.scrollIntoView({block:'nearest'}); } catch(e){}
+  var red = tipoDeRed();
+  res.senal = hayInternet() ? {ok:true, txt:'Conectado' + (red ? ' (' + red + ')' : '')} : {ok:false, txt:'Sin señal ni WiFi'};
+  pintar('');
+  var final = function(txt){ pintar(txt); btn.disabled = false; };
+  if(!res.senal.ok){
+    res.net = {ok:null, txt:'No se probó'}; res.srv = {ok:null, txt:'No se probó'}; res.ses = {ok:null, txt:'No se probó'};
+    final(esc(explicacion('SIN_SENAL').queHacer)); return Promise.resolve();
+  }
+  return sondaInternet().then(function(net){
+    res.net = net.ok ? {ok:true, txt:'Responde (' + seg(net.ms) + ')'} : {ok:false, txt:'No responde'};
+    pintar('');
+    return sondaServidor();
+  }).then(function(srv){
+    if(!srv.ok){
+      var tipo = srv.error && srv.error.tipo === 'TARDO' ? 'TARDO' : (res.net.ok ? 'BLOQUEO' : 'SIN_INTERNET');
+      if(srv.error && srv.error.tipo === 'SERVIDOR') tipo = 'SERVIDOR';
+      var x = explicacion(tipo, srv.error && srv.error.extra);
+      res.srv = {ok:false, txt: x.titulo}; res.ses = {ok:null, txt:'No se probó'};
+      anotarFalla('probarConexion', errorDe(tipo, srv.error && srv.error.detalle, srv.error && srv.error.extra), srv.ms);
+      final('<b>Qué hacer:</b> ' + esc(x.queHacer)); return;
+    }
+    res.srv = {ok:true, txt:'Responde (' + seg(srv.ms) + ') · versión ' + srv.version};
+    if(!res.net.ok) res.net = {ok:null, txt:'La prueba de Google no respondió, pero el servidor sí: no afecta'};
+    pintar('');
+    return llamar('validarToken', {}, 20000).then(function(){
+      res.ses = {ok:true, txt:'Vigente'};
+      final(ESTADO.cola ? 'Todo en orden. Tocá "Sincronizar ahora" para enviar lo que falta.' : 'Todo en orden.');
+    }, function(e){
+      res.ses = {ok:false, txt: e.message};
+      final('<b>Qué hacer:</b> ' + esc(explicacion(e.tipo, e.extra).queHacer));
+    });
+  }).catch(function(e){ final('No se pudo terminar la prueba: ' + esc(e && e.message)); });
+}
+function seg(ms){ return ms < 1000 ? ms + ' ms' : (ms/1000).toFixed(1).replace('.', ',') + ' s'; }
 
 /* =====================================================================
    INSTALACIÓN Y ARRANQUE
