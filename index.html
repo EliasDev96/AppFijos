@@ -77,6 +77,13 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 .sync.pend{border-color:#e8cfa4;border-left:3px solid var(--ambar);background:#fdf6ea}
 .sync.pend button{background:var(--rail);border-color:var(--rail);color:#fff}
 .sync button[disabled]{opacity:.55}
+/* 1.8.1: sin tareas bajadas o sesión cerrada: nunca un inicio "todo en cero" sin explicación */
+.estadoDatos{background:var(--sup);border:1px solid var(--linea);border-left:4px solid var(--azul);padding:16px;margin-bottom:18px}
+.estadoDatos > b{display:block;font-size:17px;margin-bottom:4px}
+.estadoDatos p{margin:0 0 12px;color:var(--suave);font-size:14.5px}
+.estadoDatos p:last-child{margin-bottom:0}
+.estadoDatos .campo{margin-bottom:10px}
+.notaDatos{font-size:13.5px;color:var(--suave);margin:-6px 0 14px;padding:9px 12px;background:#f3f6f8;border:1px solid var(--linea2)}
 #senal{cursor:pointer}
 .contadores{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--linea);
   background:var(--sup);margin-bottom:18px}
@@ -199,7 +206,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <label for="inPin">PIN</label>
     <input id="inPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">
   </div>
-  <button class="bton centro" onclick="entrar()">Entrar</button>
+  <button class="bton centro" id="btEntrar" onclick="entrar()">Entrar</button>
 </section>
 
 <!-- ================================================================ inicio -->
@@ -208,9 +215,11 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
     <span class="sub">Para abrirla sin entrar al navegador</span></button>
   <p class="saludo" id="saludo"></p>
   <p class="fechaHoy" id="fechaHoy"></p>
+  <div id="sesionInicio"></div>
   <div id="syncBarra"></div>
   <div id="syncInicio"></div>
   <div id="ausInicio"></div>
+  <div id="datosInicio"></div>
   <div class="contadores" id="contadores"></div>
   <div id="botonera"></div>
 </section>
@@ -319,7 +328,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.8.0';
+var VERSION_APP = '1.8.1';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -400,6 +409,7 @@ var ESTADO = {token:null, usuario:null, hoy:null, cola:0, ultimaSync:null, error
    pedido podía quedar colgado sin respuesta y sin explicación. */
 var ESPERA_MS = 60000;          // lo máximo que se espera una respuesta
 var ESPERA_ENVIO_MS = 100000;   // un envío puede esperar su turno en el servidor
+var ESPERA_DESCARGA_MS = 90000; // 1.8.1: bajar las tareas a primera hora, con todos entrando a la vez
 var PARTE_MAX = 20;             // registros por envío: con señal débil, envíos chicos
 var SONDA_INTERNET = 'https://www.gstatic.com/generate_204';
 
@@ -413,7 +423,7 @@ function explicacion(tipo, x){
                    'Probá con otra red o con los datos móviles. Lo cargado queda guardado en el teléfono.'],
     BLOQUEO:      ['Hay internet, pero el teléfono no llega al servidor de Google donde está el sistema.',
                    'Suele ser un bloqueador de anuncios, un "DNS privado", una VPN o el WiFi de un local que bloquea a Google. Probá con datos móviles; si así anda, avisale a tu supervisor.'],
-    CORTE:        ['Se cortó la conexión en medio del envío (el servidor sí responde).',
+    CORTE:        ['Se cortó la conexión a mitad de camino (el servidor sí responde).',
                    'Pasa con señal débil. La app reintenta sola, en envíos más chicos: no hace falta cargar nada de nuevo.'],
     TARDO:        ['El servidor no contestó en ' + (x.seg === 1 ? '1 segundo' : (x.seg || 60) + ' segundos') + '.',
                    'Puede ser señal muy débil o el sistema muy ocupado. Se reintenta solo; si se repite, probá con otra red.'],
@@ -422,7 +432,7 @@ function explicacion(tipo, x){
     OCUPADO:      ['El sistema estaba ocupado guardando lo de otros técnicos y no llegó tu turno.',
                    'No se perdió nada: se reintenta solo en unos minutos.'],
     SESION:       ['Tu sesión venció (alguien entró con tu código en otro teléfono, o te cambiaron el PIN).',
-                   'Fijate en "Mi cuenta" que no queden registros sin enviar, cerrá sesión y volvé a entrar.'],
+                   'Ingresá tu PIN en el inicio de la app (arriba de todo). No hace falta cerrar sesión y no se borra nada de lo que cargaste.'],
     RECHAZO:      [x.mensaje || 'El servidor no aceptó el pedido.',
                    'Si no sabés por qué, avisale a tu supervisor con una captura de esta pantalla.']
   };
@@ -615,18 +625,22 @@ function entrar(){
   var c = $('inCodigo').value.trim().toUpperCase(), p = $('inPin').value.trim();
   if(!c || !p){ avisar('Falta el código o el PIN', true); return; }
   if(!hayInternet()){ avisar('Para entrar la primera vez hace falta señal', true); return; }
+  var boton = $('btEntrar');
+  if(boton.disabled) return;
+  boton.disabled = true; boton.textContent = 'Entrando…';
 
   llamar('login', {codigo:c, pin:p}).then(function(d){
     if(d.usuario.rol !== 'TECNICO'){
       throw new Error('Esta app es para técnicos. Los supervisores entran por el panel.');
     }
-    ESTADO.token = d.token; ESTADO.usuario = d.usuario;
-    return Promise.all([ponerClave('token', d.token), ponerClave('usuario', d.usuario)]);
+    ESTADO.token = d.token; ESTADO.usuario = d.usuario; ESTADO.codigo = c;
+    return Promise.all([ponerClave('token', d.token), ponerClave('usuario', d.usuario), ponerClave('codigo', c)]);
   }).then(function(){
     $('inPin').value = '';
+    boton.textContent = 'Bajando tus tareas…';     // puede tardar a primera hora
     return sincronizar(true);
-  }).then(verInicio)
-  .catch(function(e){ avisar(e.message, true); });
+  }).then(function(){ boton.disabled = false; boton.textContent = 'Entrar'; verInicio(); })
+  .catch(function(e){ boton.disabled = false; boton.textContent = 'Entrar'; avisar(e.message, true); });
 }
 $('inPin').addEventListener('keydown', function(e){ if(e.key === 'Enter') entrar(); });
 
@@ -857,7 +871,7 @@ function sincronizar(avisarFin){
   SINCRONIZANDO = subirPendientes().then(function(r){
     subida = r;
     t0 = Date.now();
-    return llamar('trabajoDelDia', {fecha: hoyTexto()});
+    return llamar('trabajoDelDia', {fecha: hoyTexto()}, ESPERA_DESCARGA_MS);
   }).then(function(d){
     ESTADO.hoy = d;
     ESTADO.ultimaSync = new Date().toISOString();
@@ -902,7 +916,9 @@ function avisarResultadoSync(){
 function pintarSyncInicio(){
   var cont = $('syncInicio'); if(!cont) return;
   var f = ESTADO.errorSync;
-  if(!f || !ESTADO.token){ cont.innerHTML = ''; return; }
+  if(!f || !ESTADO.token || f.tipo === 'SESION'){ cont.innerHTML = ''; return; }
+  var dd = estadoDatos();
+  if(f.etapa === 'DESCARGA' && (dd === 'SIN_DATOS' || dd === 'VIEJOS')){ cont.innerHTML = ''; return; }   // ya lo dicen la barra y el recuadro
   var tit = f.etapa === 'ENVIO'
     ? 'Tus tareas están al día, pero ' + (ESTADO.cola === 1 ? '1 registro no se pudo enviar' : (ESTADO.cola || 'algunos') + ' registros no se pudieron enviar') + ' todavía'
     : 'No se pudo sincronizar';
@@ -978,12 +994,25 @@ function verInicio(){
   $('saludo').textContent = saludoHora() + ', ' + (u.nombre || '');
   $('fechaHoy').textContent = fechaLarga();
 
+  var est = estadoDatos();
+  pintarDatosInicio(est);
   Promise.all([recolectar('pendientes'), recolectar('vencidas'), todos('borradores'),
                todos('ejecuciones'), recolectar('semana'), evaluacionesPendientes()]).then(function(r){
     var pend = r[0], venc = r[1], borr = r[2], semana = r[4];
     var hechasHoy = r[3].filter(function(x){ return x.fechaProgramada === hoyTexto(); }).length;
     var evals = r[5].length;
 
+    /* Sin tareas bajadas todavía: no se muestran ceros (parecía que no había
+       nada que hacer, o que la app andaba mal). Se explica arriba. */
+    if(est === 'SIN_DATOS'){
+      $('contadores').style.display = 'none';
+      var hs = '';
+      if(borr.length) hs += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
+      hs += bt('verAjustes()', 'Mi cuenta', '', 'claro');
+      $('botonera').innerHTML = hs;
+      return;
+    }
+    $('contadores').style.display = '';
     $('contadores').innerHTML =
       cont(pend.length, 'Para hoy', pend.length ? 'pend' : '') +
       cont(hechasHoy, 'Hechas hoy', '') +
@@ -1002,9 +1031,84 @@ function verInicio(){
     $('botonera').innerHTML = h;
   });
   pintarAusenciaInicio();
+  pintarSesionInicio();
   pintarSyncInicio();
   pintarBarraSync();
   pintarSenal();
+}
+
+/* 1.8.1: ¿qué tareas tiene el teléfono?
+   'SIN_DATOS' → nunca se pudieron bajar (recién entró y falló la descarga)
+   'VIEJOS'    → son de otro día: se muestran igual, con la fecha
+   'SIN_LOCALES' → bajaron bien, pero no tiene locales asignados
+   'OK' */
+function estadoDatos(){
+  var d = ESTADO.hoy;
+  if(!d || !d.locales) return 'SIN_DATOS';
+  if(d.fecha && d.fecha !== hoyTexto()) return 'VIEJOS';
+  if(!d.locales.length && !d.ausenciaHoy) return 'SIN_LOCALES';
+  return 'OK';
+}
+function sesionCerrada(){ return !!(ESTADO.errorSync && ESTADO.errorSync.tipo === 'SESION'); }
+
+function pintarDatosInicio(est){
+  var c = $('datosInicio'); if(!c) return;
+  var h = '';
+  if(est === 'SIN_DATOS'){
+    if(SINCRONIZANDO) h = '<div class="estadoDatos"><b>Bajando tus tareas…</b><p>Esperá un momento: puede tardar hasta un minuto a primera hora.</p></div>';
+    else if(sesionCerrada()) h = '';   // lo explica el recuadro del PIN
+    else h = '<div class="estadoDatos"><b>Tus tareas todavía no se pudieron bajar</b>' +
+             '<p>' + esc(ESTADO.errorSync ? ESTADO.errorSync.titulo : 'No hubo conexión con el servidor.') + '</p>' +
+             '<p>La app vuelve a intentar sola cada pocos minutos. También podés tocar <b>Sincronizar ahora</b>. ' +
+             'Lo que registres igual queda guardado.</p></div>';
+  } else if(est === 'VIEJOS'){
+    h = '<div class="notaDatos">Estas son tus tareas del <b>' + esc(fechaDia(ESTADO.hoy.fecha)) + '</b>, la última vez que se pudieron bajar. ' +
+        'Se actualizan solas cuando haya conexión.</div>';
+  } else if(est === 'SIN_LOCALES'){
+    h = '<div class="estadoDatos"><b>Todavía no tenés locales asignados</b>' +
+        '<p>Por eso no aparecen tareas. Avisale a tu supervisor para que te asigne tu local.</p></div>';
+  }
+  c.innerHTML = h;
+}
+
+/* 1.8.1: si la sesión se cerró (se entró con el código en otro teléfono, se
+   reinició el PIN o venció), se vuelve a entrar con el PIN ACÁ MISMO, sin
+   cerrar sesión: no se borra nada y después se manda lo pendiente. Antes la
+   única salida era "Cerrar sesión", que borraba lo que no se había enviado. */
+function pintarSesionInicio(){
+  var c = $('sesionInicio'); if(!c) return;
+  if(!sesionCerrada()){ c.innerHTML = ''; return; }
+  var n = ESTADO.cola || 0;
+  c.innerHTML = '<div class="estadoDatos"><b>Volvé a ingresar tu PIN</b>' +
+    '<p>Tu sesión se cerró (alguien entró con tu código en otro teléfono, o te cambiaron el PIN). ' +
+    'No se borra nada' + (n ? ': tus ' + (n === 1 ? 'registro sin enviar se manda' : n + ' registros sin enviar se mandan') + ' apenas entres' : '') + '.</p>' +
+    (ESTADO.codigo ? '' : '<div class="campo"><label for="reCodigo">Código de técnico</label>' +
+                          '<input id="reCodigo" autocapitalize="characters" autocomplete="username"></div>') +
+    '<div class="campo"><label for="rePin">PIN</label><input id="rePin" type="password" inputmode="numeric" maxlength="6" ' +
+    'autocomplete="current-password" onkeydown="if(event.key===\'Enter\') reingresar(document.getElementById(\'btReingresar\'))"></div>' +
+    '<button class="bton centro" id="btReingresar" onclick="reingresar(this)">Entrar</button></div>';
+}
+
+function reingresar(btn){
+  var c = ESTADO.codigo || ($('reCodigo') ? $('reCodigo').value.trim().toUpperCase() : '');
+  var p = $('rePin') ? $('rePin').value.trim() : '';
+  if(!c || !p){ avisar(c ? 'Escribí tu PIN' : 'Falta el código o el PIN', true); return; }
+  if(!hayInternet()){ avisar('Para entrar hace falta señal', true); return; }
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  var otra = function(m){ btn.disabled = false; btn.textContent = 'Entrar'; avisar(m, true); };
+  llamar('login', {codigo:c, pin:p}).then(function(d){
+    var yo = ESTADO.usuario || {};
+    if(yo.idUsuario && d.usuario.idUsuario !== yo.idUsuario){
+      // otro técnico en este teléfono: no se mezclan los registros
+      otra('Ese código es de otro técnico. Para cambiar de usuario, usá "Cerrar sesión" en Mi cuenta.'); return;
+    }
+    ESTADO.token = d.token; ESTADO.usuario = d.usuario; ESTADO.codigo = c; ESTADO.errorSync = null;
+    return Promise.all([ponerClave('token', d.token), ponerClave('usuario', d.usuario), ponerClave('codigo', c),
+                        ponerClave('errorSync', null)]).then(function(){
+      verInicio();
+      return sincronizar(true);
+    }).then(function(){ if(enInicio()) verInicio(); });
+  }).catch(function(e){ otra(e.message); });
 }
 
 /* 1.8: estado y botón "Sincronizar ahora" en el inicio. Antes el botón estaba
@@ -1024,7 +1128,14 @@ function pintarBarraSync(){
   var c = $('syncBarra'); if(!c) return;
   var n = ESTADO.cola || 0;
   var est, sub;
+  if(sesionCerrada()){ c.innerHTML = ''; return; }               // primero, el PIN
+  var datos = estadoDatos();
   if(SINCRONIZANDO){ est = 'Sincronizando…'; sub = n ? n + (n === 1 ? ' registro por enviar' : ' registros por enviar') : 'Bajando tus tareas'; }
+  else if(!n && (datos === 'SIN_DATOS' || datos === 'VIEJOS')){
+    est = 'Tus tareas no están actualizadas';
+    sub = datos === 'VIEJOS' ? 'Son del ' + fechaDia(ESTADO.hoy.fecha) + '. Se reintenta solo.' : 'Se reintenta solo cada pocos minutos.';
+    n = -1;                                                           // se marca como pendiente
+  }
   else if(n){ est = n === 1 ? '1 registro sin enviar' : n + ' registros sin enviar';
               sub = hayInternet() ? 'Tocá "Sincronizar ahora" para mandarlos' : 'Sin señal: se envían solos cuando vuelva'; }
   else { est = 'Todo enviado'; sub = ESTADO.ultimaSync ? 'Última sincronización: ' + haceCuanto(ESTADO.ultimaSync) : 'Todavía no sincronizaste'; }
@@ -1042,13 +1153,28 @@ function sincronizarDesdeInicio(){
 
 /* Si quedó algo sin enviar, se reintenta solo cada 5 minutos mientras la app
    está abierta, y también al volver a abrirla. */
+/* 1.8.1: también si las tareas no se pudieron bajar o son de otro día, con
+   espera creciente: 1, 2 y después cada 5 minutos. Con la sesión cerrada no
+   se reintenta (hace falta el PIN). */
 var REINTENTO_MIN = 5;
-function reintentarSiHaceFalta(){
-  if(!ESTADO.token || SINCRONIZANDO || !ESTADO.cola || !hayInternet()) return;
-  if(document.visibilityState && document.visibilityState !== 'visible') return;
-  sincronizar(false).then(function(){ if(enInicio()) verInicio(); else pintarSenal(); });
+var REINTENTO = {fallos: 0, ultimo: 0};
+function haceFaltaSincronizar(){
+  if(!ESTADO.token || sesionCerrada()) return false;
+  var d = estadoDatos();
+  return ESTADO.cola > 0 || d === 'SIN_DATOS' || d === 'VIEJOS';
 }
-setInterval(reintentarSiHaceFalta, REINTENTO_MIN * 60000);
+function reintentarSiHaceFalta(forzar){
+  if(SINCRONIZANDO || !hayInternet() || !haceFaltaSincronizar()) return;
+  if(document.visibilityState && document.visibilityState !== 'visible') return;
+  var espera = Math.min(REINTENTO_MIN, Math.pow(2, Math.max(0, REINTENTO.fallos - 1))) * 60000;
+  if(!forzar && REINTENTO.fallos && Date.now() - REINTENTO.ultimo < espera) return;
+  REINTENTO.ultimo = Date.now();
+  sincronizar(false).then(function(){
+    REINTENTO.fallos = ESTADO.errorSync ? REINTENTO.fallos + 1 : 0;
+    if(enInicio()) verInicio(); else pintarSenal();
+  });
+}
+setInterval(reintentarSiHaceFalta, 60000);
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') reintentarSiHaceFalta(); });
 
 function cont(n, t, cls){
@@ -1785,16 +1911,18 @@ if('serviceWorker' in navigator){
 
 abrirBD().then(function(){
   return Promise.all([verClave('token'), verClave('usuario'), verClave('hoy'), verClave('ultimaSync'),
-                      verClave('errorSync')]);
+                      verClave('errorSync'), verClave('codigo')]);
 }).then(function(r){
   ESTADO.token = r[0]; ESTADO.usuario = r[1]; ESTADO.hoy = r[2]; ESTADO.ultimaSync = r[3];
   ESTADO.errorSync = r[4] || null;
+  ESTADO.codigo = r[5] || null;
   return contarCola();
 }).then(function(){
   if(!ESTADO.token){ ir('pIngreso', 'Mantenimiento', false); PILA = ['pIngreso']; return; }
-  verInicio();
   // Si hay señal, se pone al día en segundo plano sin trabar la pantalla.
-  if(hayInternet()) sincronizar(false).then(verInicio);
+  var p = hayInternet() ? sincronizar(false) : null;
+  verInicio();
+  if(p) p.then(function(){ if(enInicio()) verInicio(); });
 }).catch(function(e){
   avisar(e.message, true);
 });
