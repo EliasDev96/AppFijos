@@ -83,6 +83,8 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 .estadoDatos p{margin:0 0 12px;color:var(--suave);font-size:14.5px}
 .estadoDatos p:last-child{margin-bottom:0}
 .estadoDatos .campo{margin-bottom:10px}
+.estadoDatos.actualizando{border-left-color:var(--ambar)}
+.contadores.espera{opacity:.45}
 .notaDatos{font-size:13.5px;color:var(--suave);margin:-6px 0 14px;padding:9px 12px;background:#f3f6f8;border:1px solid var(--linea2)}
 #senal{cursor:pointer}
 .contadores{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--linea);
@@ -328,7 +330,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.8.1';
+var VERSION_APP = '1.9.0';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -409,6 +411,7 @@ var ESTADO = {token:null, usuario:null, hoy:null, cola:0, ultimaSync:null, error
    pedido podía quedar colgado sin respuesta y sin explicación. */
 var ESPERA_MS = 60000;          // lo máximo que se espera una respuesta
 var ESPERA_ENVIO_MS = 100000;   // un envío puede esperar su turno en el servidor
+var ESPERA_PING_MS = 25000;     // 1.8.2: la prueba del servidor (antes 15 s: con el servidor lento parecía un bloqueo)
 var ESPERA_DESCARGA_MS = 90000; // 1.8.1: bajar las tareas a primera hora, con todos entrando a la vez
 var PARTE_MAX = 20;             // registros por envío: con señal débil, envíos chicos
 var SONDA_INTERNET = 'https://www.gstatic.com/generate_204';
@@ -421,8 +424,8 @@ function explicacion(tipo, x){
                    'No hace falta hacer nada: lo que cargues queda guardado y se envía solo cuando vuelva la señal.'],
     SIN_INTERNET: ['El teléfono está conectado, pero no llega a internet (WiFi sin internet, datos agotados o señal muy débil).',
                    'Probá con otra red o con los datos móviles. Lo cargado queda guardado en el teléfono.'],
-    BLOQUEO:      ['Hay internet, pero el teléfono no llega al servidor de Google donde está el sistema.',
-                   'Suele ser un bloqueador de anuncios, un "DNS privado", una VPN o el WiFi de un local que bloquea a Google. Probá con datos móviles; si así anda, avisale a tu supervisor.'],
+    BLOQUEO:      ['Hay internet, pero esta vez el teléfono no llegó al servidor de Google donde está el sistema.',
+                   'Suele ser pasajero y la app reintenta sola. Si se repite durante horas, puede ser un bloqueador de anuncios, un "DNS privado", una VPN o el WiFi del local: probá con datos móviles y, si así anda, avisale a tu supervisor.'],
     CORTE:        ['Se cortó la conexión a mitad de camino (el servidor sí responde).',
                    'Pasa con señal débil. La app reintenta sola, en envíos más chicos: no hace falta cargar nada de nuevo.'],
     TARDO:        ['El servidor no contestó en ' + (x.seg === 1 ? '1 segundo' : (x.seg || 60) + ' segundos') + '.',
@@ -503,7 +506,7 @@ function sondaInternet(){
 /* ¿Responde el servidor? (no necesita sesión) */
 function sondaServidor(){
   var t0 = Date.now();
-  return pedir({accion:'ping'}, 15000).then(function(o){ return {ok:true, ms: Date.now() - t0, version: o.version}; },
+  return pedir({accion:'ping'}, ESPERA_PING_MS).then(function(o){ return {ok:true, ms: Date.now() - t0, version: o.version}; },
                                            function(e){ return {ok:false, ms: Date.now() - t0, error: e}; });
 }
 
@@ -514,6 +517,10 @@ function diagnosticar(e){
   return sondaServidor().then(function(srv){
     if(srv.ok) return errorDe('CORTE', e.detalle);
     if(!hayInternet()) return errorDe('SIN_SENAL', e.detalle);
+    // 1.8.2: si la prueba llegó al servidor pero tardó o él devolvió un error,
+    // es el servidor (lento u ocupado), no un bloqueo del teléfono
+    var t = srv.error && srv.error.tipo;
+    if(t === 'TARDO' || t === 'SERVIDOR') return errorDe(t, e.detalle, srv.error.extra);
     return sondaInternet().then(function(net){
       return errorDe(net.ok ? 'BLOQUEO' : 'SIN_INTERNET', e.detalle);
     });
@@ -888,13 +895,16 @@ function sincronizar(avisarFin){
     });
   }).then(contarCola).then(function(){
     SINCRONIZANDO = null;
+    if(enInicio()) verInicio();          // 1.9: habilita los botones y muestra lo nuevo
     if(subida && subida.revisados) avisarRevision(subida.revisados);
     else if(avisarFin) avisarResultadoSync(0);
     pintarSyncInicio();
   }, function(e){
     SINCRONIZANDO = null;                 // no debería pasar, pero nunca queda trabada
+    if(enInicio()) verInicio();
     if(avisarFin) avisar('No se pudo sincronizar: ' + (e && e.message), true);
   });
+  if(enInicio()){ pintarSyncInicio(); pintarBarraSync(); }   // "Sincronizando…" sin el error anterior
   return SINCRONIZANDO;
 }
 
@@ -916,7 +926,8 @@ function avisarResultadoSync(){
 function pintarSyncInicio(){
   var cont = $('syncInicio'); if(!cont) return;
   var f = ESTADO.errorSync;
-  if(!f || !ESTADO.token || f.tipo === 'SESION'){ cont.innerHTML = ''; return; }
+  // 1.8.2: mientras se sincroniza no se muestra el error anterior (parecía que fallaba otra vez)
+  if(!f || !ESTADO.token || f.tipo === 'SESION' || SINCRONIZANDO){ cont.innerHTML = ''; return; }
   var dd = estadoDatos();
   if(f.etapa === 'DESCARGA' && (dd === 'SIN_DATOS' || dd === 'VIEJOS')){ cont.innerHTML = ''; return; }   // ya lo dicen la barra y el recuadro
   var tit = f.etapa === 'ENVIO'
@@ -1012,7 +1023,9 @@ function verInicio(){
       $('botonera').innerHTML = hs;
       return;
     }
+    var bloq = bloqueadoPorActualizar(est);
     $('contadores').style.display = '';
+    $('contadores').className = 'contadores' + (bloq ? ' espera' : '');
     $('contadores').innerHTML =
       cont(pend.length, 'Para hoy', pend.length ? 'pend' : '') +
       cont(hechasHoy, 'Hechas hoy', '') +
@@ -1027,6 +1040,7 @@ function verInicio(){
     if(borr.length) h += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
     if(evals) h += bt('verEvaluacion()', 'Evaluación de la semana', evals, 'claro');
     h += bt('verExtra()', 'Registrar trabajo extraordinario', '', 'claro');
+    if(bloq) h = h.replace(/<button /g, '<button disabled ');
     h += bt('verAjustes()', 'Mi cuenta', '', 'claro');
     $('botonera').innerHTML = h;
   });
@@ -1051,16 +1065,25 @@ function estadoDatos(){
 }
 function sesionCerrada(){ return !!(ESTADO.errorSync && ESTADO.errorSync.tipo === 'SESION'); }
 
+/* 1.9: mientras se bajan las tareas del día (y las que hay son de otro día),
+   un solo mensaje y los botones de tareas bloqueados, para que nadie empiece
+   con las de ayer. Al terminar se habilitan solos. */
+var MENSAJE_ACTUALIZANDO = '<div class="estadoDatos actualizando"><b>Se están actualizando tus tareas</b>' +
+  '<p>Por favor, aguardá un momento para empezar.</p></div>';
+function bloqueadoPorActualizar(est){ return !!SINCRONIZANDO && (est === 'VIEJOS' || est === 'SIN_DATOS'); }
+
 function pintarDatosInicio(est){
   var c = $('datosInicio'); if(!c) return;
   var h = '';
   if(est === 'SIN_DATOS'){
-    if(SINCRONIZANDO) h = '<div class="estadoDatos"><b>Bajando tus tareas…</b><p>Esperá un momento: puede tardar hasta un minuto a primera hora.</p></div>';
+    if(SINCRONIZANDO) h = MENSAJE_ACTUALIZANDO;
     else if(sesionCerrada()) h = '';   // lo explica el recuadro del PIN
     else h = '<div class="estadoDatos"><b>Tus tareas todavía no se pudieron bajar</b>' +
              '<p>' + esc(ESTADO.errorSync ? ESTADO.errorSync.titulo : 'No hubo conexión con el servidor.') + '</p>' +
              '<p>La app vuelve a intentar sola cada pocos minutos. También podés tocar <b>Sincronizar ahora</b>. ' +
              'Lo que registres igual queda guardado.</p></div>';
+  } else if(est === 'VIEJOS' && SINCRONIZANDO){
+    h = MENSAJE_ACTUALIZANDO;                    // 1.9: y los botones de tareas quedan bloqueados hasta que termine
   } else if(est === 'VIEJOS'){
     h = '<div class="notaDatos">Estas son tus tareas del <b>' + esc(fechaDia(ESTADO.hoy.fecha)) + '</b>, la última vez que se pudieron bajar. ' +
         'Se actualizan solas cuando haya conexión.</div>';
