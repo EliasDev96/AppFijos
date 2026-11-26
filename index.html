@@ -96,6 +96,12 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 .cont span{font-size:13.5px;color:var(--suave)}
 .cont.alerta b{color:var(--rojo)}
 .cont.pend b{color:var(--ambar)}
+/* 1.9.1: una aclaración chiquita debajo del número */
+.cont em{display:block;font-style:normal;font-size:12px;color:var(--suave);margin-top:2px;line-height:1.3}
+.notaLista{font-size:14px;color:var(--suave);background:var(--sup);border:1px solid var(--linea);border-left:3px solid var(--azul);
+  padding:10px 13px;margin-bottom:12px;line-height:1.45}
+.notaLista.am{border-left-color:var(--ambar)} .notaLista.al{border-left-color:var(--rojo)}
+.notaLista b{color:var(--tinta);font-weight:600}
 
 /* ------------------------------------------------------------------ lista */
 .grupo{margin:20px 0 8px;font-size:13px;color:var(--suave);font-weight:500}
@@ -228,6 +234,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
 
 <!-- ================================================================ tareas -->
 <section id="pTareas" class="pantalla">
+  <div id="notaLista"></div>
   <div class="filtros" id="filtros"></div>
   <div id="listaTareas"></div>
 </section>
@@ -330,7 +337,7 @@ input[inputmode=numeric]{font-family:'IBM Plex Mono',monospace;letter-spacing:.3
    CONFIGURACIÓN
    ===================================================================== */
 var API = 'https://script.google.com/macros/s/AKfycbwBnBRYTGMzOkuBpWPd2FraEZZSvH_KGRz-pJ5AjX9ai7rQSURjwhFWqgngZpGB3nl4oA/exec';
-var VERSION_APP = '1.9.0';
+var VERSION_APP = '1.9.1';
 
 /* Red de seguridad de la cola: un registro que el servidor rechaza una y otra
    vez por un error que no sabe clasificar se manda a revisión del supervisor
@@ -983,6 +990,10 @@ function recolectar(cual){
       var lista = (cual === 'vencidas') ? b.vencidas
                 : (cual === 'semana')   ? (b.pendientes||[]).concat(b.masAdelante||[])
                 : b.pendientes;
+      // 1.9.1: 'hoy' = lo que toca hoy (y las diarias); 'atrasadas' = de días
+      // anteriores de esta semana, todavía a tiempo. 'pendientes' = las dos.
+      if(cual === 'hoy') lista = (lista||[]).filter(function(t){ return !t.atrasadaSemana; });
+      if(cual === 'atrasadas') lista = (lista||[]).filter(function(t){ return !!t.atrasadaSemana; });
       (lista||[]).forEach(function(t){
         var k = b.idLocal + '|' + t.idTarea;
         if(yaHecha(hechas[k], t)) return;
@@ -1007,11 +1018,12 @@ function verInicio(){
 
   var est = estadoDatos();
   pintarDatosInicio(est);
-  Promise.all([recolectar('pendientes'), recolectar('vencidas'), todos('borradores'),
-               todos('ejecuciones'), recolectar('semana'), evaluacionesPendientes()]).then(function(r){
-    var pend = r[0], venc = r[1], borr = r[2], semana = r[4];
+  Promise.all([recolectar('hoy'), recolectar('vencidas'), todos('borradores'),
+               todos('ejecuciones'), recolectar('semana'), evaluacionesPendientes(), recolectar('atrasadas')]).then(function(r){
+    var pend = r[0], venc = r[1], borr = r[2], semana = r[4], atr = r[6];
     var hechasHoy = r[3].filter(function(x){ return x.fechaProgramada === hoyTexto(); }).length;
     var evals = r[5].length;
+    var hasta = finDeSemana(atr.concat(pend, semana));
 
     /* Sin tareas bajadas todavía: no se muestran ceros (parecía que no había
        nada que hacer, o que la app andaba mal). Se explica arriba. */
@@ -1019,29 +1031,34 @@ function verInicio(){
       $('contadores').style.display = 'none';
       var hs = '';
       if(borr.length) hs += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
-      hs += bt('verAjustes()', 'Mi cuenta', '', 'claro');
+      hs += BOTON_AUSENCIA() + bt('verAjustes()', 'Mi cuenta', '', 'claro');
       $('botonera').innerHTML = hs;
       return;
     }
     var bloq = bloqueadoPorActualizar(est);
     $('contadores').style.display = '';
     $('contadores').className = 'contadores' + (bloq ? ' espera' : '');
+    /* 1.9.1: "Para hoy" es solo lo de hoy. Lo que no se hizo en días
+       anteriores de la semana va aparte ("Atrasadas"), todavía a tiempo:
+       antes todo sumaba en "Para hoy" y un técnico veía 40 "para hoy". */
     $('contadores').innerHTML =
       cont(pend.length, 'Para hoy', pend.length ? 'pend' : '') +
-      cont(hechasHoy, 'Hechas hoy', '') +
-      cont(venc.length, 'Vencidas', venc.length ? 'alerta' : '') +
-      cont(borr.length, 'Sin terminar', '');
+      cont(atr.length, 'Atrasadas', atr.length ? 'pend' : '', atr.length && hasta ? 'a tiempo hasta el ' + fechaDia(hasta) : '') +
+      cont(venc.length, 'Vencidas', venc.length ? 'alerta' : '', venc.length ? 'de semanas ya cerradas' : '') +
+      cont(hechasHoy, 'Hechas hoy', '');
 
     var h = '';
-    h += bt('verTareas(\'pendientes\')', 'Tareas de hoy', pend.length, pend.length ? '' : 'claro');
-    if(semana.length > pend.length)
-      h += bt('verTareas(\'semana\')', 'Toda la semana', semana.length, 'claro');
-    if(venc.length) h += bt('verTareas(\'vencidas\')', 'Vencidas', venc.length, 'claro');
-    if(borr.length) h += bt('verBorradores()', 'Sin terminar', borr.length, 'claro');
+    h += bt('verTareas(\'hoy\')', 'Tareas de hoy', pend.length, pend.length ? '' : 'claro', 'Las que te tocan hoy');
+    if(atr.length) h += bt('verTareas(\'atrasadas\')', 'Atrasadas de esta semana', atr.length, 'claro',
+                           'De días anteriores. Todavía a tiempo' + (hasta ? ' hasta el ' + fechaDia(hasta) : ''));
+    if(venc.length) h += bt('verTareas(\'vencidas\')', 'Vencidas', venc.length, 'claro', 'De semanas que ya cerraron');
+    if(semana.length > pend.length + atr.length)
+      h += bt('verTareas(\'semana\')', 'Toda la semana', semana.length, 'claro', 'Hoy, atrasadas y lo que viene');
+    if(borr.length) h += bt('verBorradores()', 'Sin terminar', borr.length, 'claro', 'Las que dejaste a medias');
     if(evals) h += bt('verEvaluacion()', 'Evaluación de la semana', evals, 'claro');
     h += bt('verExtra()', 'Registrar trabajo extraordinario', '', 'claro');
     if(bloq) h = h.replace(/<button /g, '<button disabled ');
-    h += bt('verAjustes()', 'Mi cuenta', '', 'claro');
+    h += BOTON_AUSENCIA() + bt('verAjustes()', 'Mi cuenta', '', 'claro');
     $('botonera').innerHTML = h;
   });
   pintarAusenciaInicio();
@@ -1200,12 +1217,13 @@ function reintentarSiHaceFalta(forzar){
 setInterval(reintentarSiHaceFalta, 60000);
 document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') reintentarSiHaceFalta(); });
 
-function cont(n, t, cls){
-  return '<div class="cont '+cls+'"><b>'+n+'</b><span>'+t+'</span></div>';
+function cont(n, t, cls, sub){
+  return '<div class="cont '+cls+'"><b>'+n+'</b><span>'+t+'</span>'+(sub ? '<em>'+esc(sub)+'</em>' : '')+'</div>';
 }
-function bt(fn, txt, n, cls){
+function bt(fn, txt, n, cls, sub){
   return '<button class="bton '+(cls||'')+'" onclick="'+fn+'">'+esc(txt)+
-         (n !== '' && n !== undefined ? '<span class="n">'+n+'</span>' : '')+'</button>';
+         (n !== '' && n !== undefined ? '<span class="n">'+n+'</span>' : '')+
+         (sub ? '<span class="sub">'+esc(sub)+'</span>' : '')+'</button>';
 }
 
 /* =====================================================================
@@ -1213,12 +1231,39 @@ function bt(fn, txt, n, cls){
    ===================================================================== */
 var FILTRO = 'TODOS', MODO = 'pendientes', LISTA = [];
 
+/* 1.9.1: el botón de ausencias también en el inicio (antes solo en "Mi cuenta"). */
+function BOTON_AUSENCIA(){ return bt('verAusencias()', 'Avisar una ausencia', '', 'claro', 'Vacaciones, reposo o permiso'); }
+
+/* El último día de la semana (S1-S4) de esas tareas: hasta ahí están a tiempo. */
+function finDeSemana(lista){
+  var h = '';
+  (lista || []).forEach(function(t){ if(t.ventanaHasta && t.ventanaHasta > h) h = t.ventanaHasta; });
+  return h;
+}
+
+var TITULO_LISTA = {hoy:'Tareas de hoy', pendientes:'Tareas de hoy', atrasadas:'Atrasadas de esta semana',
+                    vencidas:'Vencidas', semana:'Toda la semana'};
 function verTareas(modo){
-  MODO = modo || 'pendientes';
+  MODO = modo || 'hoy';
   FILTRO = 'TODOS';
-  ir('pTareas', MODO === 'vencidas' ? 'Vencidas'
-              : MODO === 'semana' ? 'Toda la semana' : 'Tareas de hoy');
-  recolectar(MODO).then(function(l){ LISTA = l; pintarLista(); });
+  ir('pTareas', TITULO_LISTA[MODO] || 'Tareas');
+  $('notaLista').innerHTML = '';
+  recolectar(MODO).then(function(l){ LISTA = l; pintarNotaLista(); pintarLista(); });
+}
+
+/* Arriba de cada lista, qué es lo que se está viendo. */
+function pintarNotaLista(){
+  var hasta = finDeSemana(LISTA);
+  var h = fechaDia(hasta);
+  var n = {
+    hoy: ['', 'Las tareas que te tocan <b>hoy</b>. Lo que no hiciste en días anteriores de esta semana está aparte, en <b>Atrasadas de esta semana</b>.'],
+    atrasadas: ['am', 'Te tocaban en días anteriores de esta semana y todavía no las registraste. <b>Estás a tiempo' +
+                (hasta ? ' hasta el ' + esc(h) : ' hasta que termine la semana') + '</b>: si las hacés antes, cuentan como hechas a tiempo.'],
+    vencidas: ['al', 'Son de <b>semanas que ya cerraron</b>. Si las hacés igual, se cuentan como hechas, pero fuera de término.'],
+    semana: ['', 'Todo lo de esta semana' + (hasta ? ' (hasta el ' + esc(h) + ')' : '') + ': lo de hoy, lo atrasado y lo que viene. ' +
+                 'Podés adelantar lo de otros días.']
+  }[MODO];
+  $('notaLista').innerHTML = (n && LISTA.length) ? '<div class="notaLista ' + n[0] + '">' + n[1] + '</div>' : '';
 }
 
 function pintarLista(){
@@ -1237,6 +1282,7 @@ function pintarLista(){
     $('listaTareas').innerHTML = '<div class="vacio"><b>Nada pendiente acá</b>'+
       (MODO==='vencidas' ? 'No tenés tareas vencidas.'
        : MODO==='semana' ? 'Terminaste todo lo de esta semana.'
+       : MODO==='atrasadas' ? 'No te queda nada atrasado de esta semana.'
        : 'Terminaste lo de hoy. Si querés adelantar, mirá "Toda la semana".')+'</div>';
     return;
   }
@@ -1251,7 +1297,7 @@ function pintarLista(){
          (t.vencida ? '<span class="etiq al">'+t.diasVencida+' días vencida</span>' : '')+
          (t.urgente ? '<span class="etiq am">Hoy sí o sí</span>' : '')+
          (t.atrasadaSemana && !t.vencida && !t.urgente
-            ? '<span class="etiq am">Era para el '+dia(t.diaAsignado)+'</span>' : '')+
+            ? '<span class="etiq am">Era para el '+dia(t.diaAsignado)+' · a tiempo</span>' : '')+
          (MODO === 'semana' && !t.disponibleHoy
             ? '<span class="etiq gr">'+dia(t.diaAsignado)+'</span>' : '')+
          (t.tipoActividad === 'NORMA' ? '<span class="etiq gr">Norma</span>' :
